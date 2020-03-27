@@ -1,0 +1,49 @@
+---
+title: "GAM_MHD"
+author: "Christen"
+date: "March 25, 2020"
+output: word_document
+---
+
+GAM Work with Monarch Health Data
+
+*Research Question*
+How do the spatial dynamics of OE infection prevalence change within year and between years in the sedentary population of monarch butterflies in the SE U.S.?
+
+*Dataset*
+```{r}
+data <- read.csv("MHD_Full.csv",  colClasses = c("Pop_density_CAT" = "factor", "Hardiness2" = "factor", "Infection_Severity" = "factor", "Month"= "factor", "Year"= "factor"))
+```
+
+*Response Variable*
+This is a binomial variable that assigns a 0 to samples where the infection level was below a 3. A 1 is assigned to infection levels above a 3#
+```{r}
+y <- data$Infection_Severity
+```
+
+*Random Effect*
+```{r}
+rand<-data$Volunteer.x
+```
+
+*Fixed Effects*
+```{r}
+Human_PopDens<- data$Pop_density_CAT
+Month <- data$Month 
+Winter_Year<- data$Season 
+```
+
+*Model Construction*
+```{r}
+require(mgcv)
+
+# Fit the model
+gam_mod <- gam(Infection_Severity ~ s(Human_PopDens, k=2, bs = "fs") + s(Winter_Year, k=2, bs = "fs") + s(Month, k=2, bs = "fs"), family = binomial, data = data)
+
+# Plot the results
+plot(gam_mod, residuals = TRUE, pch = 1)
+
+summary(gam_mod)
+```
+```
+
