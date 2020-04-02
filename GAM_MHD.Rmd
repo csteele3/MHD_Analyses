@@ -15,7 +15,7 @@ How do the spatial dynamics of OE infection prevalence change within year and be
 
 *Dataset*
 ```{r}
-data <- read.csv("MHD_WD.csv",  colClasses = c("Pop_density_CAT" = "factor", "Hardiness2" = "factor", "Infection_Severity" = "factor", "Month"= "factor", "Year"= "factor"))
+data <- read.csv("./data/MHD_WD.csv",  colClasses = c("Pop_density_CAT" = "factor", "Hardiness2" = "factor", "Infection_Severity" = "factor", "Month"= "factor", "Year"= "factor"))
 ```
 ##Add details and figures to describe the dataset here. Brown includes a map and the number of samples and volunteers per year `
 
