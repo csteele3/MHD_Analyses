@@ -2,21 +2,37 @@
 title: "GAM_MHD"
 author: "Christen"
 date: "March 25, 2020"
-output: word_document
+output:
+  html_document:
+    df_print: paged
 ---
 
 GAM Work with Monarch Health Data
 
-*Research Question*
+*Research Question 1*
 How do the spatial dynamics of OE infection prevalence change within year and between years in the sedentary population of monarch butterflies in the SE U.S.?
+
 
 *Dataset*
 ```{r}
-data <- read.csv("MHD_Full.csv",  colClasses = c("Pop_density_CAT" = "factor", "Hardiness2" = "factor", "Infection_Severity" = "factor", "Month"= "factor", "Year"= "factor"))
+data <- read.csv("MHD_WD.csv",  colClasses = c("Pop_density_CAT" = "factor", "Hardiness2" = "factor", "Infection_Severity" = "factor", "Month"= "factor", "Year"= "factor"))
+```
+##Add details and figures to describe the dataset here. Brown includes a map and the number of samples and volunteers per year `
+
+```{r}
+
+#library(maps)
+#florida_map = map_data("state")
+# 
+# 
+# ggplot(aes(x=Longitude,y=Latitude,col=Infection_Severity), data=data) +
+#     geom_polygon(data=florida_map,fill=NA, col="black")+
+#   geom_point()+theme_bw()
 ```
 
+
 *Response Variable*
-This is a binomial variable that assigns a 0 to samples where the infection level was below a 3. A 1 is assigned to infection levels above a 3#
+This is a binomial variable that assigns a 0 to samples where the infection level was below a 3. A 1 is assigned to infection levels above a 3.
 ```{r}
 y <- data$Infection_Severity
 ```
@@ -28,22 +44,81 @@ rand<-data$Volunteer.x
 
 *Fixed Effects*
 ```{r}
-Human_PopDens<- data$Pop_density_CAT
 Month <- data$Month 
 Winter_Year<- data$Season 
 ```
 
 *Model Construction*
+This first model is designed to characterize temporal infection patterns in the southeast by including month, year and an interaction of these two terms in a single model. 
+
 ```{r}
 require(mgcv)
 
 # Fit the model
-gam_mod <- gam(Infection_Severity ~ s(Human_PopDens, k=2, bs = "fs") + s(Winter_Year, k=2, bs = "fs") + s(Month, k=2, bs = "fs"), family = binomial, data = data)
 
-# Plot the results
-plot(gam_mod, residuals = TRUE, pch = 1)
+gam_mod <- gam(y ~ s(Month, k=2, bs = "fs") + s(Winter_Year, k=2, bs = "fs") + s(rand, bs="re"), family = binomial, method = "REML", data = data)
 
-summary(gam_mod)
+
+##Need to add this interaction term? Model will not allow it in any of the forms listed below.  
+  # s(Season, Month, k=2,bs = "fs" )+
+  # s(Season, by = Month, bs = "fs")+ 
+
 ```
+
+*Summarize output of model*
+
+```{r}
+summary(gam_mod)                 
+
 ```
 
+
+The model output summary tells us that the additive temporal variables explain 37.4% of the deviance.We also can convert the outputs from the model to actual probabilities because the GAM model uses a log-odds scale for estimating outputs. After converting the intercept estimate below we find that the model predicts a 56.25% chance of infection overall. 
+
+```{r}
+plogis(0.2513)
+```
+
+
+*Checking the Model*
+```{r}
+gam.check(gam_mod)
+```
+
+
+                 
+
+*Plot the results of the temporal model* 
+
+```{r}
+#install.packages("mgcViz")
+require(mgcViz)
+
+#Figures with probabilities along y axis 
+
+plot(gam_mod2, pages = 1, trans = plogis,
+     shift = coef(gam_mod)[1], seWithMean = TRUE)
+
+#Partial effects plots with 95% confidence intervals
+
+b <- getViz(gam_mod, trans = plogis)
+
+print(plot(b, allTerms = T), pages = 1)
+```
+
+*Research Question 2*
+How do the listed exogenous variables impact the spatial dynamics of OE infection prevalence change within year and between years in the sedentary population of monarch butterflies in the SE U.S.?
+  1. Human population density 
+  2. Monarch larval density 
+  3. Temperature 
+  4. Precipitation
+  
+
+*Environmental Variables Model* 
+In the Brown et al. paper, they used the GAMs in the previous step to determine the end of season infection prevalence for each year. They then looked for "bivariate correlations" between these infection prevalences and different environmental variables. 
+
+Can I build a GAM to look at how infection varies with temperature, monarch density and other variables within and between years?
+
+
+*Research Question 3*
+How do the observed patterns in infection dynamics differ by sex?
