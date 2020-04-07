@@ -9,44 +9,75 @@ output:
 
 GAM Work with Monarch Health Data
 
-*Research Question 1*
+
+
+*Overall Research Question 1*
 How do the spatial dynamics of OE infection prevalence change within year and between years in the sedentary population of monarch butterflies in the SE U.S.?
 
+
+*Why use a GAM?*
+We do not expect the patterns in disease prevalence as described by our predictor variables to be linear. For example, infection prevalence may experience increases during periods of warm weather such as in late fall and early spring, while mid winter low temperatures may result in a decline in infection prevalence as population density and therefore transmission potential declines. Graphs of the dataset are provided below for visual inspection of the linear or non-linear trends.  
 
 *Dataset*
 ```{r}
 data <- read.csv("./data/MHD_WD.csv",  colClasses = c("Pop_density_CAT" = "factor", "Hardiness2" = "factor", "Infection_Severity" = "factor", "Month"= "factor", "Year"= "factor"))
 ```
-##Add details and figures to describe the dataset here. Brown includes a map and the number of samples and volunteers per year `
+
+
+Graph the relationship between infection and day of year to visually inspect the relationship for linearity. 
+```{r}
+#Convert variables into different forms for graphing purposes
+data$Day_Year<-as.factor(data$Day_Year)
+data$Infection_Severity<-as.numeric(data$Infection_Severity)
+
+#Calculate the probability of infection on each day of year 
+ library(plyr)
+r2<-ddply(data,.(Day_Year), summarize, mean=mean(Infection_Severity))
+r3<- (r2$mean)-1
+r2$r3 <- r3
+
+#Plot 
+plot(r2$Day_Year, r2$r3, xlab = "Day of Year", ylab = "Probability of Infection")
+
+```
+
+Graph the relationship between infection and year to visually inspect the relationship for linearity. 
 
 ```{r}
+#Convert variables into different forms for graphing purposes
+data$Season<-revalue(data$Season, c("11_12"="1", "12_13"="2", "13_14"="3", "14_15"="4", "15_16"="5", "16_17"="6", "17_18"="7"))
 
-#library(maps)
-#florida_map = map_data("state")
-# 
-# 
-# ggplot(aes(x=Longitude,y=Latitude,col=Infection_Severity), data=data) +
-#     geom_polygon(data=florida_map,fill=NA, col="black")+
-#   geom_point()+theme_bw()
+class(data$Season)
+
+data$Infection_Severity<-as.numeric(data$Infection_Severity)
+
+
+#Calculate the probability of infection on each day of year 
+ library(plyr)
+s1<-ddply(data,.(Season), summarize, mean=mean(Infection_Severity))
+s2<- (s1$mean)-1
+s1$s2 <- s2
+
+#Plot 
+plot(s1$Season, s1$s2, xlab = "Year", ylab = "Probability of Infection")
+
 ```
 
 
-*Response Variable*
-This is a binomial variable that assigns a 0 to samples where the infection level was below a 3. A 1 is assigned to infection levels above a 3.
+*Exploring the Change in Infection Prevalence Between Years*
+  
+  *Hypothesis 1: Within Year*
+  If the population of winterbreeding monarchs in the southeastern US is growing, we expect that OE infection prevalence may increase with year as increased monarch density leads to higher rates of transmission.
+  
+  *Hypothesis 2: Between Years*
+  Within a single winter season OE infection prevalence may increase with day of year as reproductive activity and increased monarch density lead to higher rates of transmission. 
+
 ```{r}
-y <- data$Infection_Severity
+plot(data$Season, data$Infection_Severity)
 ```
 
-*Random Effect*
-```{r}
-rand<-data$Volunteer.x
-```
 
-*Fixed Effects*
-```{r}
-Month <- data$Month 
-Winter_Year<- data$Season 
-```
+
 
 *Model Construction*
 This first model is designed to characterize temporal infection patterns in the southeast by including month, year and an interaction of these two terms in a single model. 
@@ -54,15 +85,16 @@ This first model is designed to characterize temporal infection patterns in the 
 ```{r}
 require(mgcv)
 
+#Ensure variables are of the correct type for model construction 
+data$Day_Year<-as.numeric(data$Day_Year)
+data$Season<-as.numeric(data$Season)
+
+data$Infection_Severity<-as.factor(data$Infection_Severity)
+
 # Fit the model
+gam_mod <- gam(Infection_Severity ~ te(Day_Year, Season, k =4) + Day_Year + Season + s(Volunteer.x, bs="re"), family = binomial, method = "REML", data = data)
 
-gam_mod <- gam(y ~ s(Month, k=2, bs = "fs") + s(Winter_Year, k=2, bs = "fs") + s(rand, bs="re"), family = binomial, method = "REML", data = data)
-
-
-##Need to add this interaction term? Model will not allow it in any of the forms listed below.  
-  # s(Season, Month, k=2,bs = "fs" )+
-  # s(Season, by = Month, bs = "fs")+ 
-
+summary(gam_mod)
 ```
 
 *Summarize output of model*
@@ -73,10 +105,10 @@ summary(gam_mod)
 ```
 
 
-The model output summary tells us that the additive temporal variables explain 37.4% of the deviance.We also can convert the outputs from the model to actual probabilities because the GAM model uses a log-odds scale for estimating outputs. After converting the intercept estimate below we find that the model predicts a 56.25% chance of infection overall. 
+The model output summary tells us that the additive temporal variables explain 36.7% of the deviance.We also can convert the outputs from the model to actual probabilities because the GAM model uses a log-odds scale for estimating outputs. After converting the intercept estimate below we find that the model predicts a 63.8% chance of infection overall. 
 
 ```{r}
-plogis(0.2513)
+plogis(0.5688)
 ```
 
 
@@ -96,12 +128,12 @@ require(mgcViz)
 
 #Figures with probabilities along y axis 
 
-plot(gam_mod2, pages = 1, trans = plogis,
+plot(gam_mod, pages = 1, trans = plogis,
      shift = coef(gam_mod)[1], seWithMean = TRUE)
 
 #Partial effects plots with 95% confidence intervals
 
-b <- getViz(gam_mod, trans = plogis)
+b <- getViz(gam_modT, trans = plogis)
 
 print(plot(b, allTerms = T), pages = 1)
 ```
