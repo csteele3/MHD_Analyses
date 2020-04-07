@@ -39,6 +39,9 @@ r2$r3 <- r3
 #Plot 
 plot(r2$Day_Year, r2$r3, xlab = "Day of Year", ylab = "Probability of Infection")
 
+library(ggplot2)
+ggplot(data=r2, aes(x=as.numeric(Day_Year), r3))+geom_point() + geom_smooth()
+
 ```
 
 Graph the relationship between infection and year to visually inspect the relationship for linearity. 
@@ -59,7 +62,7 @@ s2<- (s1$mean)-1
 s1$s2 <- s2
 
 #Plot 
-plot(s1$Season, s1$s2, xlab = "Year", ylab = "Probability of Infection")
+plot(as.numeric(s1$Season), s1$s2, xlab = "Year", ylab = "Probability of Infection", type='o')
 
 ```
 
@@ -67,15 +70,11 @@ plot(s1$Season, s1$s2, xlab = "Year", ylab = "Probability of Infection")
 *Exploring the Change in Infection Prevalence Between Years*
   
   *Hypothesis 1: Within Year*
-  If the population of winterbreeding monarchs in the southeastern US is growing, we expect that OE infection prevalence may increase with year as increased monarch density leads to higher rates of transmission.
+ Within a single winter season OE infection prevalence may increase with day of year as reproductive activity and increased monarch density lead to higher rates of transmission. 
+ 
   
   *Hypothesis 2: Between Years*
-  Within a single winter season OE infection prevalence may increase with day of year as reproductive activity and increased monarch density lead to higher rates of transmission. 
-
-```{r}
-plot(data$Season, data$Infection_Severity)
-```
-
+  If the population of winterbreeding monarchs in the southeastern US is growing, we expect that OE infection prevalence may increase with year as increased monarch density leads to higher rates of transmission.
 
 
 
@@ -94,7 +93,11 @@ data$Infection_Severity<-as.factor(data$Infection_Severity)
 # Fit the model
 gam_mod <- gam(Infection_Severity ~ te(Day_Year, Season, k =4) + Day_Year + Season + s(Volunteer.x, bs="re"), family = binomial, method = "REML", data = data)
 
+gam_mod.2 <- gam(Infection_Severity ~ te(Day_Year, Season, k =4) + s(Day_Year) + s(Season,k=4) + s(Volunteer.x, bs="re"), family = binomial, method = "REML", data = data)
+
 summary(gam_mod)
+summary(gam_mod.2)
+
 ```
 
 *Summarize output of model*
@@ -133,8 +136,7 @@ plot(gam_mod, pages = 1, trans = plogis,
 
 #Partial effects plots with 95% confidence intervals
 
-b <- getViz(gam_modT, trans = plogis)
-
+b <- getViz(gam_mod.2, trans = plogis)
 print(plot(b, allTerms = T), pages = 1)
 ```
 
