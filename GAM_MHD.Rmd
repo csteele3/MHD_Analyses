@@ -14,30 +14,35 @@ GAM Work with Monarch Health Data
 *Overall Research Question 1*
 How do the spatial dynamics of OE infection prevalence change within year and between years in the sedentary population of monarch butterflies in the SE U.S.?
 
+OE infection patterns will be investigated at 3 levels:
+  1. Interannual dynamics: investigating patterns in infection within a year 
+  2. Intraannual 
+
 
 *Why use a GAM?*
 We do not expect the patterns in disease prevalence as described by our predictor variables to be linear. For example, infection prevalence may experience increases during periods of warm weather such as in late fall and early spring, while mid winter low temperatures may result in a decline in infection prevalence as population density and therefore transmission potential declines. Graphs of the dataset are provided below for visual inspection of the linear or non-linear trends.  
 
 *Dataset*
 ```{r}
-data <- read.csv("./data/MHD_WD.csv",  colClasses = c("Pop_density_CAT" = "factor", "Hardiness2" = "factor", "Infection_Severity" = "factor", "Month"= "factor", "Year"= "factor"))
+data <- read.csv("./data/MHD_WD.csv", colClasses = c("Pop_density_CAT" = "factor", "Hardiness2" = "factor", "Infection_Severity" = "factor", "Month"= "factor", "Year"= "factor"))
 ```
 
 
 Graph the relationship between infection and day of year to visually inspect the relationship for linearity. 
+From this figure it is hard to discern any clear pattern. There seems to be a mostly random distribution of infection prevalence across all year (by day of year). 
 ```{r}
 #Convert variables into different forms for graphing purposes
-data$Day_Year<-as.factor(data$Day_Year)
+data$sDay_Year<-as.factor(data$sDay_Year)
 data$Infection_Severity<-as.numeric(data$Infection_Severity)
 
 #Calculate the probability of infection on each day of year 
  library(plyr)
-r2<-ddply(data,.(Day_Year), summarize, mean=mean(Infection_Severity))
+r2<-ddply(data,.(sDay_Year), summarize, mean=mean(Infection_Severity))
 r3<- (r2$mean)-1
 r2$r3 <- r3
 
 #Plot 
-plot(r2$Day_Year, r2$r3, xlab = "Day of Year", ylab = "Probability of Infection")
+plot(r2$sDay_Year, r2$r3, xlab = "Day of Year", ylab = "Probability of Infection")
 
 ```
 
@@ -59,7 +64,7 @@ s2<- (s1$mean)-1
 s1$s2 <- s2
 
 #Plot 
-plot(s1$Season, s1$s2, xlab = "Year", ylab = "Probability of Infection")
+plot(s1$Season, s2, xlab = "Year", ylab = "Probability of Infection")
 
 ```
 
@@ -87,14 +92,38 @@ require(mgcv)
 
 #Ensure variables are of the correct type for model construction 
 data$Day_Year<-as.numeric(data$Day_Year)
-data$Season<-as.numeric(data$Season)
+data$Season<-as.factor(data$Season)
 
 data$Infection_Severity<-as.factor(data$Infection_Severity)
 
 # Fit the model
-gam_mod <- gam(Infection_Severity ~ te(Day_Year, Season, k =4) + Day_Year + Season + s(Volunteer.x, bs="re"), family = binomial, method = "REML", data = data)
 
-summary(gam_mod)
+gam_mod <- gam(Infection_Severity ~  Season + ti(sDay_Year, by = Season, k =4) + s(Volunteer.x, bs="re"), family = binomial, method = "REML", data = data)
+
+#Why "ti"?
+  ###Tensor product smooths are used to model interactions between   variables that have different natural scales. They multoiply   the smooth terms of one variable by the factor levels of the other
+
+  ##Only paramteric interactions would use the : or * connotation    to signify an interaction term. 
+
+  ##By generates an indicator vector for each level of a factor      unless the factored is ordered. Is it is ordered then a       different   smooth is generated for each fator level (except the first for   ordered factors). 
+
+  ##If using a by variabe then entering constraints will be applied to the smooths, so the factor variable should be included as   a parameter as well (so "Season" should be a parameter in the model). 
+
+
+#Why "by"?
+  ##By variables are used for constructing "varying coefficient models" and for leeting smooths interact with parametric terms. In this case our smooth is the Day_Year variable and the Season term is the parametric term (a factor)
+
+
+#Why k=4? 
+
+#Why "family=binomial"? 
+
+#Why is "Season" parametric?
+
+#Why is Volunteer "bs=re"? 
+
+#Why REML? 
+
 ```
 
 *Summarize output of model*
@@ -103,6 +132,8 @@ summary(gam_mod)
 summary(gam_mod)                 
 
 ```
+Key points from model output: 
+
 
 
 The model output summary tells us that the additive temporal variables explain 36.7% of the deviance.We also can convert the outputs from the model to actual probabilities because the GAM model uses a log-odds scale for estimating outputs. After converting the intercept estimate below we find that the model predicts a 63.8% chance of infection overall. 
@@ -115,10 +146,45 @@ plogis(0.5688)
 *Checking the Model*
 ```{r}
 gam.check(gam_mod)
+
+#Description of information provided by each figure is below 
+
+
+binnedplot(fitted(gam_mod), 
+           residuals(gam_mod, type = "response"), 
+           nclass = NULL, 
+           xlab = "Expected Values", 
+           ylab = "Average residual", 
+           main = "Binned residual plot", 
+           cex.pts = 0.8, 
+           col.pts = 1, 
+           col.int = "gray")
+```
+
+```{r}
+binnedplot(data$sDay_Year, 
+           residuals(gam_mod, type = "response"), 
+           nclass = NULL, 
+           xlab = "Day_Year", 
+           ylab = "Average residual", 
+           main = "Binned residual plot", 
+           cex.pts = 0.8, 
+           col.pts = 1, 
+           col.int = "gray")
 ```
 
 
-                 
+
+1. Residuals vs. quantiles 
+
+2. Residuals vs. linear predictors 
+  Points should be in a random cloud pattern - ideally clustered close to the zero line  because this signifies smaller residuals. What you dont want is any clear pattern  where the residuaals increase or decrease in line with the predicted value. Or any non-linear patterns. Also check for outliers here. 
+
+3. Histogram of residuals 
+
+4. R-console output 
+
+5. Response vs. fitted values               
 
 *Plot the results of the temporal model* 
 
@@ -133,10 +199,39 @@ plot(gam_mod, pages = 1, trans = plogis,
 
 #Partial effects plots with 95% confidence intervals
 
-b <- getViz(gam_modT, trans = plogis)
+b <- getViz(gam_mod, trans = plogis)
 
-print(plot(b, allTerms = T), pages = 1)
+print(plot(b, allTerms = T))
+
+#Visualization of the interaction between Season and Day_Year in a 3D plot 
+
+vis.gam(gam_mod, n.grid = 50, theta = 400, phi = 20, ylab = "Day of Year", xlab = "Season", zlab = "",
+        ticktype = "detailed", color = "terrain", main = "Interaction between day of year and season")
+
+
+
+##theta= rotates the view around horizontally 
+##phi = rotates the view vertically 
+##n.grid =  controls the number of grid boxes
+##z scale = GAM model predictions 
+
 ```
+
+```{r}
+#Visualization of the contour plot
+vis.gam(gam_mod, plot.type = "contour", ylab = "Day of Year", xlab = "Season", color = "terrain", main = "Interaction between day of year and season")
+
+
+```
+
+
+Written explanation for each figure: 
+
+
+
+
+
+
 
 *Research Question 2*
 How do the listed exogenous variables impact the spatial dynamics of OE infection prevalence change within year and between years in the sedentary population of monarch butterflies in the SE U.S.?
