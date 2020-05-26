@@ -22,50 +22,58 @@ We do not expect the patterns in disease prevalence as described by our predicto
 
 *Dataset*
 ```{r}
-data <- read.csv("./data/MHD_WD.csv", colClasses = c("Pop_density_CAT" = "factor", "Hardiness2" = "factor", "Infection_Severity" = "factor", "Month"= "factor", "Year"= "factor"))
+#wdata <- read.csv("./data/MHD_WD.csv", colClasses = c("Pop_density_CAT" = "factor", "Hardiness2" = "factor", "Infection_Severity" = "factor", "Month"= "factor", "Year"= "factor"))
+
+data<- read.csv("./data/YR_MHD.csv")
+
 ```
 
 
 *Exploration of the Data through Graphing*
 Graph the relationship between infection and day of year to visually inspect the relationship for linearity. 
 From this figure it is hard to discern any clear pattern. There seems to be a mostly random distribution of infection prevalence across all year (by day of year). 
+
+#Note: Day 200 is mid-July 
 ```{r}
 #Convert variables into different forms for graphing purposes
-data$sDay_Year<-as.factor(data$sDay_Year)
-data$Infection_Severity<-as.numeric(data$Infection_Severity)
+data$Day_Year<-as.factor(data$Day_Year)
+data$Infection<-as.numeric(data$Infection)
 
+library(dplyr)
 #Calculate the probability of infection on each day of year 
  library(plyr)
-r2<-ddply(data,.(sDay_Year), summarize, mean=mean(Infection_Severity))
-r3<- (r2$mean)-1
+r2<-ddply(data,.(Day_Year), summarize, mean=mean(Infection))
+r3<- (r2$mean)
 r2$r3 <- r3
 
 library(ggplot2)
-ggplot(data=r2, aes(x=as.numeric(sDay_Year), r3))+geom_point() + geom_smooth()
+ggplot(data=r2, aes(x=as.numeric(Day_Year), r3))+geom_point() + geom_smooth()
 
 ```
 
 Graph the relationship between infection and year to visually inspect the relationship for linearity. 
 
+Note: Year data is from 2009-2018
+
 ```{r}
 #Convert variables into different forms for graphing purposes
-data$Season<-revalue(data$Season, c("11_12"="1", "12_13"="2", "13_14"="3", "14_15"="4", "15_16"="5", "16_17"="6", "17_18"="7"))
+##data$Season<-revalue(data$Season, c("11_12"="1", "12_13"="2", "13_14"="3", "14_15"="4", "15_16"="5", "16_17"="6", "17_18"="7"))
 
-class(data$Season)
-
-data$Infection_Severity<-as.numeric(data$Infection_Severity)
+data$Year.Sampled<-as.factor(data$Year.Sampled)
+data$Infection<-as.numeric(data$Infection)
 
 
 #Calculate the probability of infection on each day of year 
  library(plyr)
-s1<-ddply(data,.(Season), summarize, mean=mean(Infection_Severity))
-s2<- (s1$mean)-1
+s1<-ddply(data,.(Year.Sampled), summarize, mean=mean(Infection))
+s2<- (s1$mean)
 s1$s2 <- s2
 
 #Plot 
-plot(as.numeric(s1$Season), s1$
+plot(as.numeric(s1$Year.Sampled), s1$
        s2, xlab = "Year", ylab = "Probability of Infection", type='o')
 ```
+
 
 
 *Analyzing the Change in Infection Prevalence Over Time*
@@ -99,7 +107,7 @@ Details on the model:
 The interaction between two parametric terms would use the : or * connotation, but smooth interactions cannot. "By" generates an indicator vector for each level of a factor  unless the factor is ordered. If it is ordered then a different smooth is generated for each fator level (except the first level). 
 
 
-3. Why k=4? 
+3. Why k=6? 
 The term k is also referred to as "knots". These are the natural breaks in the basis functions that make up the "basis" or "smooth function" or "spline". Where the knots break along the spline is usually defined by quantiles. K is usually the max number of degrees of freedom allowed for a smooth term in the model. K in the models will always =  (max degrees of freedom - 1). In this case 
 
 4. Why "family=binomial"? 
@@ -119,33 +127,52 @@ In order to include Volunteer as a random effect, we tell the model to use the r
 require(mgcv)
 
 #Ensure variables are of the correct type for model construction 
-data$sDay_Year<-as.numeric(data$sDay_Year)
-data$Season<-as.factor(data$Season)
+data$Day_Year<-as.numeric(data$Day_Year)
+data$Year.Sampled<-as.factor(data$Year.Sampled)
 
-data$Infection_Severity<-as.factor(data$Infection_Severity)
+data$Infection<-as.factor(data$Infection)
 
 # Fit the model
 
-gam_mod <- gam(Infection_Severity ~  Season + ti(sDay_Year, by = Season, k =6) + s(Volunteer.x, bs="re"), family = binomial, method = "REML", data = data)
+gam_mod <- gam(Infection ~  Year.Sampled + ti(Day_Year, by = Year.Sampled, k =6) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
 
-#Code below for comparing models# 
+summary(gam_mod) 
 
-#gam_mod2 <- gam(Infection_Severity ~  Season + s(sDay_Year) + ti(sDay_Year, by = Season, k =6) + s(Volunteer.x, bs="re"), family = binomial, method = "REML", data = data)
+save(gam_mod, file="gam_mod.Rdata")
 
-#AIC(gam_mod, gam_mod2)
+                                                            #Code below for comparing models# 
+
+###Comparing Year in the model with and without a smooth###
+
+data$Year.Sampled<-as.numeric(data$Year.Sampled)
+
+
+gam_modSS <- gam(Infection ~  s(Year.Sampled, k = 8) + ti(Day_Year, by = Year.Sampled, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
+
+summary(gam_modSS)
+save(gam_modSS, file="gam_modSS.Rdata")
+
+
+AIC(gam_mod, gam_modSS)
 ```
 *Summarize output of model*
 
 ```{r}
-summary(gam_mod)                 
+
+#For table 
+summary.gam(gam_mod) 
+
+mgcv:summary(gam_mod)
+
+class(gam_mod)
 
 ```
 Key points from model output: 
 
-The model output summary tells us that the additive temporal variables explain 36.7% of the deviance.We also can convert the outputs from the model to actual probabilities because the GAM model uses a log-odds scale for estimating outputs. After converting the intercept estimate below we find that the model predicts a 63.8% chance of infection overall. 
+The model output summary tells us that the additive temporal variables explain 44.3% of the deviance.We also can convert the outputs from the model to actual probabilities because the GAM model uses a log-odds scale for estimating outputs. After converting the intercept estimate below we find that the model predicts a 65.5% chance of infection overall. 
 
 ```{r}
-plogis(0.5489)
+plogis(0.6439)
 ```
 
 
@@ -155,13 +182,14 @@ plogis(0.5489)
 
 #gam.check does not seem to be the best method for visualizing logistic models
 
+library(arm)
 
-binnedplot(fitted(gam_mod), 
-           residuals(gam_mod, type = "response"), 
+binnedplot(fitted(gam_modSS), 
+           residuals(gam_modSS, type = "response"), 
            nclass = NULL, 
            xlab = "Expected Values", 
            ylab = "Average residual", 
-           main = "Binned residual plot", 
+           main = "S Year", 
            cex.pts = 0.8, 
            col.pts = 1, 
            col.int = "gray")
@@ -178,22 +206,29 @@ require(mgcViz)
 #Partial effects plots with 95% confidence intervals
   #y axis = Mean sqaure difference between fitted values? If transformed then we get probability 
 
-#Version1: Figures with probabilities along y axis 
+#Version1: Figures with probabilities along y axis and shifted to incorporate the intercept of each smooth
+  #these can be interpreted as the probability of the outcome if all other variables were at their average value. The confidence interval are the range of uncertainty of the probability of the outcome for any values of the variable, holding other variables equal at their average value (this interpretation is fromseWithMean)
 
 plot(gam_mod, pages = 1, trans = plogis,
-     shift = coef(gam_mod)[1], seWithMean = TRUE)
+     shift = coef(gam_mod)[1], seWithMean = TRUE, rug = TRUE, shade = TRUE, shade.col = "lightgreen", 
+     col = "purple")
+
+
+plot(gam_modSS, pages = 1, trans = plogis,
+     shift = coef(gam_mod)[1], seWithMean = TRUE, rug = TRUE, shade = TRUE, shade.col = "lightgreen", 
+     col = "purple")
 
 #Version2
-b <- getViz(gam_mod, trans = plogis)
+#b <- getViz(gam_mod, trans = plogis)
 
-print(plot(b, allTerms = T))
+#print(plot(b, allTerms = T))
 ```
 
 Visualization of the interaction between Season and Day_Year in a 3D plot. 
 
 ```{r}
 
-vis.gam(gam_mod, n.grid = 50, theta = 400, phi = 20, ylab = "Day of Year", xlab = "Season", zlab = "",
+vis.gam(gam_mod, n.grid = 50, theta = 400, phi = 20, ylab = "Day of Year", xlab = "Year", zlab = "",
         ticktype = "detailed", color = "terrain", main = "Interaction between day of year and season")
 
 
@@ -208,14 +243,38 @@ vis.gam(gam_mod, n.grid = 50, theta = 400, phi = 20, ylab = "Day of Year", xlab 
 Contour plot of Day_year and Season. 
 
 ```{r}
-vis.gam(gam_mod, plot.type = "contour", ylab = "Day of Year", xlab = "Season", color = "terrain", main = "Interaction between day of year and season")
+vis.gam(gam_mod,  plot.type = "contour", ylab = "Day_Year", xlab = "Year.Sampled", color = "terrain", main = "Interaction between day of year and season", theme(legend.position = "top"))
+
+vis.gam(x= gam_mod,plot.type = "contour",color="heat",theta=-35)  
+
+
+#Determine what the red lines mean 
+
+source("https://sebastiansauer.github.io/Rcode/logit2prob.R")
+
+GM<-logit2prob(coef(gam_mod))
+
+
+install.packages("gratia")
+install.packages("itsadug")
+
+require(gratia)
+draw(gam_mod, n_contour = 5)
+
+require(itsadug)
+pvisgam(gam_mod)
+
+```
+```{r}
 
 ```
 
 
 Summary of plot results: 
 
-Spatio-temporal Model Example 
+*Spatio-temporal Model Example* 
+
+We see a change in years 2, 5, 6, 7, of infection prevalence increasing over Day_Year. Where do we end up with the highest infection prevalence? 
 
 ```{r}
 
@@ -224,6 +283,8 @@ library(dplyr)
 library(maps)
 
 south_east <- subset(states, region %in% c("florida", "georgia", "louisiana"))
+
+
 se_map = map_data("state", "florida", "georgia")
                   
                   "florida", "georgia", "louisiana","texas")%>%
