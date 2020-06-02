@@ -34,7 +34,11 @@ Graph the relationship between infection and day of year to visually inspect the
 From this figure it is hard to discern any clear pattern. There seems to be a mostly random distribution of infection prevalence across all year (by day of year). 
 
 #Note: Day 200 is mid-July 
+
+Section 1 
 ```{r}
+
+
 #Convert variables into different forms for graphing purposes
 data$Day_Year<-as.factor(data$Day_Year)
 data$Infection<-as.numeric(data$Infection)
@@ -49,12 +53,17 @@ r2$r3 <- r3
 library(ggplot2)
 ggplot(data=r2, aes(x=as.numeric(Day_Year), r3))+geom_point() + geom_smooth()
 
+
+ggplot(data=data, aes(x=as.numeric(Day_Year), r3))+geom_point() + geom_smooth()
+
+
 ```
 
 Graph the relationship between infection and year to visually inspect the relationship for linearity. 
 
 Note: Year data is from 2009-2018
 
+Section 2 
 ```{r}
 #Convert variables into different forms for graphing purposes
 ##data$Season<-revalue(data$Season, c("11_12"="1", "12_13"="2", "13_14"="3", "14_15"="4", "15_16"="5", "16_17"="6", "17_18"="7"))
@@ -123,8 +132,10 @@ In order to include Volunteer as a random effect, we tell the model to use the r
 
 8. Should I be using a different basis function? Cubic? 
 
+Section 3 
 ```{r}
 require(mgcv)
+
 
 #Ensure variables are of the correct type for model construction 
 data$Day_Year<-as.numeric(data$Day_Year)
@@ -132,7 +143,7 @@ data$Year.Sampled<-as.factor(data$Year.Sampled)
 
 data$Infection<-as.factor(data$Infection)
 
-# Fit the model
+# Fit model without Year Smoothed 
 
 gam_mod <- gam(Infection ~  Year.Sampled + ti(Day_Year, by = Year.Sampled, k =6) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
 
@@ -142,7 +153,7 @@ save(gam_mod, file="gam_mod.Rdata")
 
                                                             #Code below for comparing models# 
 
-###Comparing Year in the model with and without a smooth###
+###Fit model with year smoothed 
 
 data$Year.Sampled<-as.numeric(data$Year.Sampled)
 
@@ -153,10 +164,22 @@ summary(gam_modSS)
 save(gam_modSS, file="gam_modSS.Rdata")
 
 
-AIC(gam_mod, gam_modSS)
+###Fit model with Day_Year as individual effect 
+gam_modIY <- gam(Infection ~  s(Day_Year) + s(Year.Sampled, k = 8) + ti(Day_Year, by = Year.Sampled, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
+
+save(gam_modIY, file="gam_modIY.Rdata")
+
+summary(gam_modIY)
+
+#WHen comparing all 3 models, gam_modIY is the best model with AIC 12813.5. 
+#gam_mod = 12317.86
+#gam_modSS = 12859.28
+AIC(gam_modIY, gam_modSS)
+
 ```
 *Summarize output of model*
 
+Section 4
 ```{r}
 
 #For table 
@@ -170,13 +193,15 @@ class(gam_mod)
 Key points from model output: 
 
 The model output summary tells us that the additive temporal variables explain 44.3% of the deviance.We also can convert the outputs from the model to actual probabilities because the GAM model uses a log-odds scale for estimating outputs. After converting the intercept estimate below we find that the model predicts a 65.5% chance of infection overall. 
-
+Section 5 
 ```{r}
 plogis(0.6439)
 ```
 
 
 *Checking the Model*
+
+Section 6 
 ```{r}
 #gam.check(gam_mod)
 
@@ -199,6 +224,7 @@ binnedplot(fitted(gam_modSS),
 *Plot the results of the temporal model* 
 Plots of the partial effects of the interaction fo Day_Year and Season for each level of Season. 
 
+Section 7 
 ```{r}
 #install.packages("mgcViz")
 require(mgcViz)
@@ -209,14 +235,10 @@ require(mgcViz)
 #Version1: Figures with probabilities along y axis and shifted to incorporate the intercept of each smooth
   #these can be interpreted as the probability of the outcome if all other variables were at their average value. The confidence interval are the range of uncertainty of the probability of the outcome for any values of the variable, holding other variables equal at their average value (this interpretation is fromseWithMean)
 
-plot(gam_mod, pages = 1, trans = plogis,
+plot(gam_modIY, pages = 1, trans = plogis,
      shift = coef(gam_mod)[1], seWithMean = TRUE, rug = TRUE, shade = TRUE, shade.col = "lightgreen", 
      col = "purple")
 
-
-plot(gam_modSS, pages = 1, trans = plogis,
-     shift = coef(gam_mod)[1], seWithMean = TRUE, rug = TRUE, shade = TRUE, shade.col = "lightgreen", 
-     col = "purple")
 
 #Version2
 #b <- getViz(gam_mod, trans = plogis)
@@ -226,9 +248,10 @@ plot(gam_modSS, pages = 1, trans = plogis,
 
 Visualization of the interaction between Season and Day_Year in a 3D plot. 
 
+Section 8 
 ```{r}
 
-vis.gam(gam_mod, n.grid = 50, theta = 400, phi = 20, ylab = "Day of Year", xlab = "Year", zlab = "",
+vis.gam(gam_modSS, n.grid = 50, theta = 400, phi = 20, ylab = "Day of Year", xlab = "Year", zlab = "",
         ticktype = "detailed", color = "terrain", main = "Interaction between day of year and season")
 
 
@@ -242,10 +265,11 @@ vis.gam(gam_mod, n.grid = 50, theta = 400, phi = 20, ylab = "Day of Year", xlab 
 
 Contour plot of Day_year and Season. 
 
+Section 9 
 ```{r}
-vis.gam(gam_mod,  plot.type = "contour", ylab = "Day_Year", xlab = "Year.Sampled", color = "terrain", main = "Interaction between day of year and season", theme(legend.position = "top"))
+vis.gam(gam_modIY,  plot.type = "contour", ylab = "Day_Year", xlab = "Year.Sampled", color = "terrain", main = "Interaction between day of year and season", theme(legend.position = "top"))
 
-vis.gam(x= gam_mod,plot.type = "contour",color="heat",theta=-35)  
+vis.gam(x= gam_modIY,plot.type = "contour",color="terrain",theta=-35)  
 
 
 #Determine what the red lines mean 
@@ -274,8 +298,117 @@ Summary of plot results:
 
 *Spatio-temporal Model Example* 
 
+Joint models of space and time. 
+
+Should an interaction between space and time be included? This is compared here and the interaction is found to be significant and produces a significantly lower AIC value compared to the non-interaction term model. 
+
+Section 10 
+```{r}
+data$Year.Sampled<-as.numeric(data$Year.Sampled)
+
+
+#First, run a model without an interaction between space and time as done in the example. By comparing this model to the model with a space-tie interaction, we will be able to determine the relative importance of the interaction term. 
+
+STno = gam(Infection~ s(Longitude_city,Latitude_city) + s(Year.Sampled, k = 8) + s(Volunteer, bs="re"),
+                          data=data,family=binomial,method="REML")
+
+save(STno, file="STno.Rdata")
+summary(STno)
+plot(STno,scheme=2)
+
+
+#Now run the model with the interaction term 
+
+STyes = gam(Infection~ s(Longitude_city,Latitude_city) + s(Year.Sampled, k = 8)+ ti(Longitude_city, Latitude_city, Year.Sampled, d=c(2,1)) + s(Volunteer, bs="re"),
+                          data=data,family=binomial,method="REML")
+save(STyes, file="STyes.Rdata")
+summary(STyes)
+plot(STyes,scheme=2)
+
+load(STyes)
+AIC(STno, STyes)
+
+
+```
+WHile including the interaction term improves the fit of the model, it doesnt make it easy to determine where we are seeing 1) OE hotspots within each year 2) the greatest change in hotspots over time. 
+
+We will next use the "predict" function from mgcv to better visualize the output of the STyes model. 
+
+
+
+
+
+
+
+Graphing of space-time interactions 
+
+Section 11 
+```{r}
+
+
+#First we'll create gridded data
+data$Year.Sampled<-as.factor(data$Year.Sampled)
+
+predict_infection = expand.grid(
+  Latitude_city= seq(min(data$Latitude_city), 
+                max(data$Latitude_city),
+                length=50),
+  Longitude_city = seq(min(data$Longitude_city),
+                  max(data$Longitude_city),
+                  length=50),
+  Volunteer = data$Volunteer, 
+  Year.Sampled = seq(1,8,by=1)
+)
+```
+
+
+Section 12 
+```{r}
+##(DONT DO THIS! It is too computationally intensive without the cluster) 
+
+
+predict_infection$model_fit = predict(STyes,
+                                    predict_infection,type = "response")
+
+save(model_fit, file="model_fit.Rdata")
+
+```
+
+Section 13 
+```{r}
+ggplot(aes(Longitude_city, Latitude_city, fill= model_fit),
+       data=predict_infection)+
+  geom_tile()+
+  facet_wrap(~Year.Sampled,nrow=2)+
+  scale_fill_viridis("Infection Probability")+
+  theme_bw(10)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 We see a change in years 2, 5, 6, 7, of infection prevalence increasing over Day_Year. Where do we end up with the highest infection prevalence? 
 
+Section 14
 ```{r}
 
 #Create the background map 
@@ -292,7 +425,7 @@ se_map = map_data("state", "florida", "georgia")
 
 ```
 
-
+Section 15 
 ```{r}
 predict_richess = expand.grid(
   Latitude= seq(min(data$Latitude), 
