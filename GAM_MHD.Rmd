@@ -151,7 +151,9 @@ summary(gam_mod)
 
 save(gam_mod, file="gam_mod.Rdata")
 
-                                                            #Code below for comparing models# 
+##Test the effect of runnign Year.SAmpled as a numeric with GAM_Mod                                                            
+
+#Code below for comparing models# 
 
 ###Fit model with year smoothed 
 
@@ -165,16 +167,35 @@ save(gam_modSS, file="gam_modSS.Rdata")
 
 
 ###Fit model with Day_Year as individual effect 
+
+#Running Both as numeric variables
+data$Year.Sampled<-as.numeric(data$Year.Sampled)
+data$Day_Year<-as.numeric(data$Day_Year)
+
+
 gam_modIY <- gam(Infection ~  s(Day_Year) + s(Year.Sampled, k = 8) + ti(Day_Year, by = Year.Sampled, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
 
 save(gam_modIY, file="gam_modIY.Rdata")
 
 summary(gam_modIY)
 
-#WHen comparing all 3 models, gam_modIY is the best model with AIC 12813.5. 
+#Running Year as a Factor 
+data$Year.Sampled<-as.factor(data$Year.Sampled)
+data$Day_Year<-as.numeric(data$Day_Year)
+
+
+gam_modIF <- gam(Infection ~  s(Day_Year) + Year.Sampled + ti(Day_Year, by = Year.Sampled, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
+
+save(gam_modIF, file="gam_modIY.Rdata")
+
+summary(gam_modIF)
+
+#WHen comparing all 3 models:
+#gam_modIF = 12266.17
+#gam_modIY = 12813.5. 
 #gam_mod = 12317.86
 #gam_modSS = 12859.28
-AIC(gam_modIY, gam_modSS)
+AIC(gam_modIY, gam_modIF, gam_mod, gam_modSS)
 
 ```
 *Summarize output of model*
@@ -209,8 +230,8 @@ Section 6
 
 library(arm)
 
-binnedplot(fitted(gam_modSS), 
-           residuals(gam_modSS, type = "response"), 
+binnedplot(fitted(gam_modIF), 
+           residuals(gam_modIF, type = "response"), 
            nclass = NULL, 
            xlab = "Expected Values", 
            ylab = "Average residual", 
@@ -236,7 +257,7 @@ require(mgcViz)
   #these can be interpreted as the probability of the outcome if all other variables were at their average value. The confidence interval are the range of uncertainty of the probability of the outcome for any values of the variable, holding other variables equal at their average value (this interpretation is fromseWithMean)
 
 plot(gam_modIY, pages = 1, trans = plogis,
-     shift = coef(gam_mod)[1], seWithMean = TRUE, rug = TRUE, shade = TRUE, shade.col = "lightgreen", 
+     shift = coef(gam_modIY)[1], seWithMean = TRUE, rug = TRUE, shade = TRUE, shade.col = "lightgreen", 
      col = "purple")
 
 
@@ -267,9 +288,9 @@ Contour plot of Day_year and Season.
 
 Section 9 
 ```{r}
-vis.gam(gam_modIY,  plot.type = "contour", ylab = "Day_Year", xlab = "Year.Sampled", color = "terrain", main = "Interaction between day of year and season", theme(legend.position = "top"))
+vis.gam(gam_modIF,  plot.type = "contour", ylab = "Day_Year", xlab = "Year.Sampled", color = "terrain", main = "Interaction between day of year and season", theme(legend.position = "top"))
 
-vis.gam(x= gam_modIY,plot.type = "contour",color="terrain",theta=-35)  
+vis.gam(x= gam_modIF,plot.type = "contour",color="terrain",theta=-35)  
 
 
 #Determine what the red lines mean 
@@ -283,7 +304,7 @@ install.packages("gratia")
 install.packages("itsadug")
 
 require(gratia)
-draw(gam_mod, n_contour = 5)
+draw(gam_modIF, n_contour = 5)
 
 require(itsadug)
 pvisgam(gam_mod)
@@ -319,14 +340,14 @@ plot(STno,scheme=2)
 
 #Now run the model with the interaction term 
 
-STyes = gam(Infection~ s(Longitude_city,Latitude_city) + s(Year.Sampled, k = 8)+ ti(Longitude_city, Latitude_city, Year.Sampled, d=c(2,1)) + s(Volunteer, bs="re"),
+STyes = gam(Infection~ s(Longitude,Latitude) + s(Year.Sampled, k = 8)+ ti(Longitude, Latitude, Year.Sampled, d=c(2,1)) + s(Volunteer, bs="re"),
                           data=data,family=binomial,method="REML")
 save(STyes, file="STyes.Rdata")
 summary(STyes)
 plot(STyes,scheme=2)
 
-load(STyes)
-AIC(STno, STyes)
+load("STyes.Rdata")
+AIC(STyes)
 
 
 ```
@@ -342,51 +363,246 @@ We will next use the "predict" function from mgcv to better visualize the output
 
 Graphing of space-time interactions 
 
-Section 11 
+
+Section 12: We need to select a volunteer whose observations represent the average infection prevalence found by all volunteers. To do this, we will first determine the average infection prevalence per volunteer and then select the volunteer whose average is closest to this number. 
+
+
+```{r}
+#First use plyr to calculate the average per volunteer 
+library(plyr)
+r2<-ddply(data,.(Volunteer), summarize, Avg=mean(Infection))
+r2
+#We now have a table r2, with the average infection prevalence per volunteer for all 269 volunteers 
+```
+
+Section 12A: We can visualize the distribution of infection prevalence per volunteer. 
+```{r}
+library(ggplot2)
+ggplot(data=r2, aes(x=as.factor(Volunteer), Avg)) + geom_point()+ geom_smooth()
+
+hist(r2$Avg)
+```
+Section 12B: Next we summarize the r2 dataframe to determine the overall mean per volunteer. 
+```{r}
+summary(r2)
+
+#The mean in 0.4681
+```
+
+Section 12C: Select the volunteers with an average closest to the average of 0.4681
 ```{r}
 
+Average_Volunteers <- r2[r2$Avg >= 0.4 & r2$Avg < 0.5, ]
+Average_Volunteers$Differ<-0.4681-Average_Volunteers$Avg
+Average_Volunteers
 
-#First we'll create gridded data
-data$Year.Sampled<-as.factor(data$Year.Sampled)
-
-predict_infection = expand.grid(
-  Latitude_city= seq(min(data$Latitude_city), 
-                max(data$Latitude_city),
-                length=50),
-  Longitude_city = seq(min(data$Longitude_city),
-                  max(data$Longitude_city),
-                  length=50),
-  Volunteer = data$Volunteer, 
-  Year.Sampled = seq(1,8,by=1)
-)
+#We find that 2 volunteers Ana Maria Agrusa (13) and Laninda Sande (154) have averages closest to the overall average (0.4615385), therefore we can use either volunteer in the model 
 ```
 
 
-Section 12 
-```{r}
-##(DONT DO THIS! It is too computationally intensive without the cluster) 
 
+```{r}
+library("maps")
+library("dplyr")
+library("ggplot2")
+states <- map_data("state")
+
+se_map <- subset(states, region %in% c("florida", "georgia", "louisiana", "alabama", "mississippi", "texas", "south carolina", "oklahoma", "arkansas", "north carolina", "tennessee", "virginia", "kentucky"))
+
+SE = map_data("state", c("florida", "georgia", "louisiana", "alabama", "mississippi", "texas", "south carolina", "oklahoma", "arkansas", "north carolina", "tennessee", "virginia", "kentucky"))%>%
+  mutate( Latitude = lat, Longitude= long, order=order)
+
+%>%
+  summarise(id = "midwest")
+
+#reorder columns 
+SE2 <- SE[c("Latitude", "Longitude", "group",
+               "order", "region")]
+ 
+ SEg<-ggplot(SE) + geom_polygon(aes(x= long, y=lat, group = group), fill = "red", alpha = .9) 
+ 
+ 
+ SEg
+ 
+ SEE<-as.data.frame(SE)
+
+ p<-ggplot_build(SE)$se_map
+ 
+ p<-SE$se_map
+ 
+SE
+
+ geom_rect(aes(xmin = min(long), ymin = min(lat), xmax = max(long), ymax = max(lat)), fill = "blue")
+ 
+ 
+library(tidyverse)
+library(maps)
+
+# get map (as map object)
+ 
+states <- map_data("state")
+
+se_map <- subset(states, region %in% c("florida", "georgia", "louisiana", "alabama", "mississippi", "texas", "south carolina", "oklahoma", "arkansas", "north carolina", "tennessee", "virginia", "kentucky"))
+
+
+groups = aggregate(se_map, by = "group")
+
+  
+se_map
+
+
+
+
+
+
+```
+```{r}
+##COnvert data to shapefile 
+st_crs(SE)
+
+
+shapefile <- st_as_sf(SE, coords = c("Latitude", "Longitude"), crs = utm18nCRS)
+
+writeOGR(SE, "c:/Desktop", "layer name", driver = "ESRI Shapefile")
+
+
+
+##Cut out state lines, making one large polygon 
+
+##Convert back to dataframe 
+
+require(rgdal)
+foo <- readOGR(dsn=".",layer="ne_10m_roads_north_america")
+foo.df <- as(foo, "data.frame")
+
+```
+
+
+Section 13: We can now move on to creating a grid of predicted infection prevalence using the average observation values of volunteer #13.  
+```{r}
+data$Latitude<-as.numeric(data$Latitude)
+data$Longitude<-as.numeric(data$Longitude)
+
+se_map$Latitude<-as.numeric(se_map$lat)
+se_map$Longitude<-as.numeric(se_map$long)
+
+data$Year.Sampled<-as.factor(data$Year.Sampled)
+
+#First we'll create gridded data
+
+predict_infection = expand.grid(
+  Latitude= seq(min(data$Latitude), 
+                max(data$Latitude),
+                length=100),
+  Longitude = seq(min(data$Longitude),
+                  max(data$Longitude),
+                  length=100),
+  Volunteer = levels(data$Volunteer)[13],  
+  Year.Sampled = seq(2011,2018,by=1))
+
+#head(predict_infection)
+
+#summary(data)
+```
+```{r}
+# This now selects only that data that falls within Florida's border
+library("mgcv")
+library("rgdal")
+
+predict_infection = predict_infection[with(predict_infection, 
+                                          inSide(SE2, Latitude,Longitude)),]
+
+predict_infection <- predict_infection[order(predict_infection$order),]
+
+predict_infection <- rbind(predict_infection, SE2,by=c("Latitude","Longitude"))
+
+
+
+
+library("sp")
+as.data.frame(predict_infection)
+over(predict_infection, SE2)
+
+
+library(spatialEco)
+
+new_shape <- point.in.poly(predict_infection, SE2)
+```
+
+
+Dissolving internal boundaries of map 
+```{r}
+library("tidyverse")
+library("sf")
+
+```
+
+
+
+```{r}
 
 predict_infection$model_fit = predict(STyes,
                                     predict_infection,type = "response")
 
-save(model_fit, file="model_fit.Rdata")
-
 ```
 
 Section 13 
+
+Add space by day of year may be the next step in the analysis in order to see if infection changes in different regions through time
+It seems like anytime I seem to know what I ma talking about she rears up 
+We need to have a story with this. Especially from the spatiotemporal data. Think about story for publication 
 ```{r}
-ggplot(aes(Longitude_city, Latitude_city, fill= model_fit),
+#ggmap use this instead of ggplot 
+library(ggplot2)
+library(viridis)
+ggplot(aes(Longitude, Latitude, group =group, fill= model_fit),
        data=predict_infection)+
   geom_tile()+
   facet_wrap(~Year.Sampled,nrow=2)+
   scale_fill_viridis("Infection Probability")+
-  theme_bw(10)
+  theme_classic()
+data$Volunteer
+
+
+```
+
+
+Calculate the difference from year to year 
+```{r}
+predict_infection$model_change =predict(STyes,
+                                      predict_infection%>%mutate(Year.Sampled=Year.Sampled+1),
+                                      type = "response") - predict_infection$model_fit 
+```
+
+```{r}
+ggplot(aes(Longitude, Latitude, fill= model_change),
+       data=predict_infection%>% filter(Year.Sampled < 2018))+
+  geom_tile()+
+  facet_wrap(~Year.Sampled,nrow=2)+
+  scale_fill_gradient(low = "white", high = "red", na.value = NA)
 ```
 
 
 
 
+
+
+
+
+
+
+
+
+```{r}
+library(tidyr)
+
+#creates new data frame with model fit for each year
+pivot_wider(predict_infection, id_cols = c(Longitude_city, Latitude_city), names_from = Year.Sampled, values_from = model_fit)
+```
+
+
+
+```
 
 
 
@@ -412,61 +628,12 @@ Section 14
 ```{r}
 
 #Create the background map 
-library(dplyr)
-library(maps)
-
-south_east <- subset(states, region %in% c("florida", "georgia", "louisiana"))
-
-
-se_map = map_data("state", "florida", "georgia")
-                  
-                  "florida", "georgia", "louisiana","texas")%>%
-  transmute(Longitude= long, Latitude = lat, order=order)
 
 ```
 
 Section 15 
 ```{r}
-predict_richess = expand.grid(
-  Latitude= seq(min(data$Latitude), 
-                max(data$Latitude),
-                length=50),
-  Longitude = seq(min(data$Longitude),
-                  max(data$Longitude),
-                  length=50),
-  Season = seq(1,7,by=1), 
-  sDay_Year = seq(1,136,by=10), 
-  Volunteer.x=1
-)
 
-
-predict_richess$model_fit = predict(gam_mod,
-                                    predict_richess,type = "response")
-ggplot(aes(Longitude, Latitude, fill= model_fit),
-       data=predict_richess)+
-  geom_tile()+
-  facet_wrap(~Season,nrow=2)+
-  scale_fill_viridis("# of species")+
-  theme_bw(10)
-
-
-
-predict_richess$model_fit = predict(gam_mod,
-                                    predict_richess,type = "response")
-predict_richess$model_change =predict(gam_mod,
-                                      predict_richess%>%mutate(Season=Season+1),
-                                      type = "response") -
-  predict_richess$model_fit 
-
-
-ggplot(aes(Longitude, Latitude, fill= model_fit),
-       data=predict_richess)+
-  geom_tile()+
-  facet_wrap(~Season,nrow=2)+
-  theme_bw(10)
-
-
-gam_mod3 <- gam(Infection_Severity ~  ti(Latitude, Longitude) + Season + ti(sDay_Year, by = Season, k =6) + s(Volunteer.x, bs="re"), family = binomial, method = "REML", data = data)
 
 
 
