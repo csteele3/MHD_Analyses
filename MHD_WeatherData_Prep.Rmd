@@ -1,0 +1,219 @@
+---
+title: "MHDWeatherData_Markdown"
+author: "Christen"
+date: "July 16, 2020"
+output: html_document
+---
+
+Install the needed packages. 
+```{r}
+#When it asked you, did you choose binary or source? What if you do install.packages("XML", type="binary"). You are probably fine with the pre-compiled binary version. - MrFlick
+install.packages("XML", type="binary")
+install.packages("rnoaa")
+
+library("XML")
+library("rnoaa")
+library("dplyr") 
+```
+
+Get through link the noaa code and save key. 
+```{r}
+options(noaakey = "mydUSdPqZMAjEcGHFedjxIeJWQBiBZjj")
+```
+
+Load a dataframe with the sample observations 
+```{r}
+data<- read.csv("./data/YR_MHD.csv")
+
+```
+
+Call the daily weather station data 
+```{r}
+library("rnoaa")
+station_data <-ghcnd_stations() 
+```
+
+Create dataframe with just needed info to retrieve weather stations, removing duplicates with unique 
+```{r}
+lat_lon_df <- select(data,
+                     City,
+                     Latitude,
+                     Longitude) %>% unique() %>%
+  ungroup() %>%
+  rename(id = City) %>%
+   rename(latitude=Latitude) %>%
+   rename(longitude =Longitude) %>%
+  mutate(id = factor(id))
+
+lat_lon_df = as.data.frame(lat_lon_df)
+
+```
+
+Find stations near the data points with the data needed 
+```{r}
+#Limit  controls the numer of stations pulled per site
+MHDstations <- meteo_nearby_stations(lat_lon_df,
+                                       station_data = station_data,
+                                       limit = 5,
+                                       year_min = 2011, year_max = 2018,
+                                       var = ("all"))
+
+MHDstations <- unique(bind_rows(MHDstations) %>% select(- distance))
+
+```
+
+Pull the actual weather data from the selected weather stations 
+```{r}
+monitors<-meteo_pull_monitors(monitors = MHDstations$id,
+                            date_min = "2011-01-01", 
+                             date_max = "2018-12-31", 
+                                 var = "all")
+
+save(monitors, file="monitors.Rdata")
+```
+
+
+Use the rnoaa package to get the coverage data for each weather station. You can then plot this data to visually see which stations have data. 
+```{r}
+#First use the meteo_coverage function to get the coverage per variable
+obs_covr <- meteo_coverage(monitors)
+
+library("ggplot2")
+autoplot(obs_covr)
+```
+
+Filter the data by coverage 
+
+```{r}
+
+#Now convert the meteo object to a dataframe
+library(tidyverse)
+MonitorCoverage<-obs_covr %>%
+  reduce(inner_join, by = "id")
+MonitorCoverage<-as.data.frame(MonitorCoverage)
+
+#Now filter out any stations with less than 80% coverage 
+GoodMonitors<-MonitorCoverage %>% dplyr::filter(tmin.x >= 0.90)
+
+```
+
+Merge the good weather files with the original station data to get lat and long of each station 
+```{r}
+GoodMonitorsMerged=merge(GoodMonitors,MHDstations,by="id")
+
+
+
+```
+
+
+
+
+```{r}
+
+#Prepare to combine WD file and MHD file based on year, month and state 
+wd.date.get.year<-function(wd.date)
+{
+  as.numeric(strsplit(as.character(wd.date),split="-")[[1]][1])
+}
+
+wd.date.get.month<-function(wd.date)
+{
+  as.numeric(strsplit(as.character(wd.date),split="-")[[1]][2])
+}
+
+wd.date.get.day<-function(wd.date)
+{
+  as.numeric(strsplit(as.character(wd.date),split="-")[[1]][3])
+}
+
+wd.get.state<-function(wd.station.name)
+{
+  s<-strsplit(as.character(wd.station.name),split=" ")[[1]]
+  s[length(s)-1]
+}
+GoodMonitorsMerged$Year<-sapply(GoodMonitorsMerged$date, wd.date.get.year)
+GoodMonitorsMerged$Month<-sapply(GoodMonitorsMerged$date, wd.date.get.month)
+GoodMonitorsMerged$Day<-sapply(GoodMonitorsMerged$date, wd.date.get.day)
+
+write.csv(GoodMonitorsMerged, "GoodMonitorsMerged.csv", row.names = FALSE)
+```
+
+
+```{r}
+#Rename columns in the data file to prepare for matching with the GoodMOnitorsMerged files
+data <- data %>% rename( Year = Year.Sampled)
+data <- data %>% rename( Month = Month.Sampled) 
+data <- data %>% rename( Day = Day.Sampled) 
+data <- data %>% rename( latitude = Latitude) 
+data <- data %>% rename( longitude = Longitude) 
+
+
+#After the preliminary sorting, find the closest weather station
+find.closest<-function(point, stns)
+
+{
+  dist<-c()
+  for(j in 1:nrow(stns))
+  {
+    dist[j]<-raster::pointDistance(point, c(stns$longitude[j],stns$latitude[j]),lonlat=TRUE)
+  }
+  which.min(dist)
+  
+}
+
+stns<-data.frame()
+for(i in 1:nrow(data))
+{
+  #for each obs in mh data, get (filter) all weather stns that are same year, month, state
+  tmp<-filter(GoodMonitorsMerged, Year==data$Year[i] & Month==data$Month[i] & Day==data$Day[i]) 
+        
+  #find the closest station
+  stns<-rbind(stns,tmp[find.closest(c(data$longitude[i],data$latitude[i]),tmp),])
+  }
+
+
+
+  
+stns<-stns %>% transmute(Station=id,Station_Name=name,STN.LAT=latitude,STN.LON=longitude, 
+                   TMIN=tmin.y,PRCP=prcp.y,PRCP_Coverage=prcp.x, TMIN_Coverage=tmin.x, TMAX= tmax.y, TAVG = tavg.y)
+
+#Merge together the data file and the weather data 
+weather_and_MHD<-cbind(data,stns)
+#summary(weather_and_MHD)
+
+#data[nrow(data) + 1,] = NA 
+
+```
+
+Edit reading in TMIN to reflect nearest 10th 
+```{r}
+weather_and_MHD$TMIN2 <-  weather_and_MHD$TMIN/10
+weather_and_MHD$TMAX2 <-  weather_and_MHD$TMAX/10
+weather_and_MHD$TAVG2 <-  weather_and_MHD$TAVG/10
+
+#Editing of weather data into smaller data frame  
+df = subset(DailyWeath, select = c(id, start_date, end_date, total_obs, tmin.x, tmax.y, tmin.y, date, PRCP= prcp.y))
+df$TMIN <-  df$tmin.y/10
+df$TMAX <-  df$tmax.y/10
+df$TMIN_cov <-  df$tmin.x
+df$PRCP <-  df$prcp.y
+df$Date <-  df$date
+df = subset(df, select = -c(tmin.x, tmax.y, tmin.y, date, prcp.y))
+
+#Drop out unneeded columns 
+df = subset(weather_and_MHD, select = -c(Method, Latitude_Zip_based, Longitude_Zip_based, TMIN, TMAX, TAVG, PRCP_Coverage, City.State) )
+
+
+#Merge in Hardiness Zone data 
+YRweather_hardi_MHD<-merge(Hardiness_Zipcode_Raw, weather_and_MHD, by.x="zipcode", by.y="Zipcode")
+```
+
+Write a csv file with the combined weather data and monarch health data 
+```{r}
+write.csv(YRweather_MHD, "YRweather_MHD.csv", row.names = FALSE)
+
+
+write.csv(YRweather_hardi_MHD, "YRweather_hardi_MHD.csv", row.names = FALSE)
+
+```
+
