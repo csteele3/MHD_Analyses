@@ -183,6 +183,7 @@ weather_and_MHD<-cbind(data,stns)
 
 #data[nrow(data) + 1,] = NA 
 
+
 ```
 
 Edit reading in TMIN to reflect nearest 10th 
