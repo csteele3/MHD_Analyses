@@ -671,8 +671,12 @@ In the Brown et al. paper, they used the GAMs in the previous step to determine 
     2. How does the number of freezes within each hardiness zone impact the overall infection prevalence?
     3. How does the number of freezes preceeding an observation impact infection? 
    
-Creating a Weekly Infection MHD File
+
+
+
+First, explore the relationship between temperature and infection by graphing the data. 
 ```{r}
+#Import the infection data 
 library(readr)
 MHD <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/YR_MHD_weather_hardi2.csv")
 
@@ -708,16 +712,32 @@ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 #Create dataframe with YearWeek Freezes 
 weeklyMHD_all3 %>%
 filter(Year == "2016" ,zone == "10a") %>%
+  #Need to add uniqe values of freeze weeks and then add to figure as x intercepts 
+  
 ```
 
 
-Import Weather Data and Count Freezes per Week
+Import Weather Data and Code Days when *Freezes* Occurred as 1 in the Weather Data Set 
 ```{r}
+############################################
+###########DAILY FREEZE DATA################
+############################################
+
 Weather_Hardi <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Hardi.csv")
+
+#Modify the weather data to prepare it for analysis 
+  #Rename Columns to match MHD 
+Weather_Hardi<-Weather_Hardi %>%
+  rename(Year = Year.Sampled,
+    Station = StationName)
+ #Make sure date column is in correct format 
+library(lubridate)
+Weather_Hardi$date<- parse_date_time(Weather_Hardi$date, orders = c("mdy", "dmy","ymd"))
+Weather_Hardi$date<-as.Date(Weather_Hardi$date)  
+#Create the week variable 
+Weather_Hardi$week <- week(Weather_Hardi$date)
 
 #Turn each daily observation into a 0 or 1 for freezes, developmental 0 and then count the number of occurrences in a week. 
-
-
 #Function for counting the number of freezes. Starting with identifying freeze days. 
 freeze.days<-function (TMIN, Day){
   freeze.days<-c()
@@ -738,180 +758,28 @@ freeze.days<-function (TMIN, Day){
 Weather_Hardi$freeze.day<-freeze.days(Weather_Hardi$TMIN, Weather_Hardi$Day)
 
 #Examine the number of freeze days to ensure a reasonable number have been recorded 
-Weather_Hardi %>% group_by(freeze.day) %>% tally()
-
-#Add the number of freezes in each week and add to weekly data frame 
-  #Rename Columns to match MHD 
-Weather_Hardi<-Weather_Hardi %>%
-  rename(Year = Year.Sampled,
-    Station = StationName)
-
- #Make sure date column is in correct format 
-library(lubridate)
-Weather_Hardi$date<- parse_date_time(Weather_Hardi$date, orders = c("mdy", "dmy","ymd"))
-Weather_Hardi$date<-as.Date(Weather_Hardi$date)  
-
-#Create the week variable 
-Weather_Hardi$week <- week(Weather_Hardi$date)
-
-#Add it up
-FreezeDataFrame<-aggregate(freeze.day~week+zone+id +Year, FUN=sum, data=Weather_Hardi, na.rm=TRUE)
-
-#Merge the freeze.day column into the weeklyMHD dataframe based on week, zone, station and year 
-  #Put columns that are shared between dataframes int he same format
-FreezeDataFrame$Year<-as.factor(FreezeDataFrame$Year)
-
-weeklyMHD<-weeklyMHD %>%
-  rename(id = Station)
-  #Merge 
-weeklyMHD_freeze<-left_join(weeklyMHD, FreezeDataFrame, by=c("week", "Year", "id"))
-
-#Look at data to ensure accuracy 
-weeklyMHD_freeze %>% group_by(zone.y) %>% tally()
-
-```
-
-
-
-
-Now add in TMIN to the weekly data by averaging the weekly TMIN 
-
-
-
-```{r}
-#Add it up
-TMINDataFrame<-aggregate(TMIN~week+zone+id +Year, FUN=mean, data=Weather_Hardi, na.rm=TRUE)
-
-#Merge the freeze.day column into the weeklyMHD dataframe based on week, zone, station and year 
-  #Put columns that are shared between dataframes int he same format
-TMINDataFrame$Year<-as.factor(TMINDataFrame$Year)
-
-  #Merge 
-weeklyMHD_freeze<-left_join(weeklyMHD_freeze, TMINDataFrame, by=c("week", "Year", "id"))
-
-#Look at data to ensure accuracy 
-weeklyMHD_freeze %>% group_by(Dev.Zero.days) %>% tally()
-```
-
-
-
-#To do next
-Remove unneeeded olumns from weeklyMHD_freeze and save 
-1. WHy is zone not the same? 
-2. Models to test effects of different measures. 
-3. Add a lag based on slow development time 
-
-
-
-Ways to test lag 
-
-```{r}
-
-
-#Make sure variable names in each dataframe are in the same format and have the same name 
-MHD<-MHD%>%
-  rename(TMIN = TMIN2)
-
-Weather_Hardi$date<- parse_date_time(Weather_Hardi$date, orders = c("mdy", "dmy","ymd"))
-Weather_Hardi$date<-as.Date(Weather_Hardi$date)
-
-
-library(zoo)
-#JUst averages the previous 5 observations in the list of data 
-LAG_WH = Weather_Hardi %>%
-    dplyr::group_by(id, Year.Sampled) %>%
-  dplyr::arrange(id, Year.Sampled, Day) %>%
-  dplyr::mutate(temp.lag1 = lag(TMIN, n = 1)) %>%
-  dplyr::mutate(temp.5.previous = zoo::rollapply(data = temp.lag1, 
-                                     width = 5, 
-                                     FUN = mean, 
-                                     align = "right", 
-                                     fill = NA, 
-                                     na.rm = T))
-
-
-
-```
-
-
-
-
-Create Columns Asscoated with the Number of Freezes that have Occurred at 7, 30, 60 days 
-
-```{r}
-Weather_Hardi <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Hardi.csv")
-
-#Turn each weather day into a 0 for no freeze or 1 for freeze 
-
-#Function for counting the number of freezes. Starting with identifying freeze days. 
-freeze.days<-function (TMIN, Day){
-  freeze.days<-c()
-  for (i in 1:length(TMIN)){
-    if(is.na(TMIN[i])){
-      freezes<-NA
-      }else if (TMIN[i]>0){
-      freezes<-0
-    }else{
-      freezes<-1
-    }
-    freeze.days<-c(freeze.days, freezes)
-  }
-  return(freeze.days)
-}
-
-#and now the freeze day counter
-Weather_Hardi$freeze.day<-freeze.days(Weather_Hardi$TMIN, Weather_Hardi$Day)
-
-#Examine the number of freeze days to ensure a reasonable number have been recorded 
+library(dplyr)
 Weather_Hardi %>% group_by(freeze.day) %>% tally()
 ```
 
-
-
+Count the number of *freezes* in the previous 7 days, 30 days and 60 days from when an observation was made 
 ```{r}
-#############################################################
-#Create the WEEKLY NUMBER OF FREEZES Infection Dataframe#
-#############################################################
-#Count the number of freezes in each week and add to weekly data frame 
-  #Rename Columns to match MHD 
-Weather_Hardi<-Weather_Hardi %>%
-  rename(Year = Year.Sampled,
-    Station = StationName)
+############################################
+###########SUMMED FREEZE DATA################
+############################################
 
- #Make sure date column is in correct format 
-library(lubridate)
-Weather_Hardi$date<- parse_date_time(Weather_Hardi$date, orders = c("mdy", "dmy","ymd"))
-Weather_Hardi$date<-as.Date(Weather_Hardi$date)  
-
-#Create the week variable 
-Weather_Hardi$week <- week(Weather_Hardi$date)
-
-#Add it up
-FreezeDataFrame<-aggregate(freeze.day~week+zone+id +Year, FUN=sum, data=Weather_Hardi, na.rm=TRUE)
-
-#Merge the freeze.day column into the weeklyMHD dataframe based on week, zone, station and year 
-  #Put columns that are shared between dataframes int he same format
-FreezeDataFrame$Year<-as.factor(FreezeDataFrame$Year)
-weeklyMHD$Year<-as.factor(weeklyMHD$Year)
+#
 
 
-#Rename columns to prepare for the merge 
-weeklyMHD<-weeklyMHD %>%
-  rename(id = Station)
-  #Merge 
-weeklyMHD_freeze<-left_join(weeklyMHD, FreezeDataFrame, by=c("week", "Year", "id"))
-
-#Look at data to ensure accuracy 
-weeklyMHD_freeze %>% group_by(zone.y) %>% tally()
 
 #############################################################
-#Create the 30 DAY NUMBER OF FREEZES Infection Dataframe#
+#Create the 30 DAY SUMMED NUMBER OF FREEZES Column#
 #############################################################
-ThirtyDayMHD_freeze = Weather_Hardi %>%
-    dplyr::group_by(id, Year) %>%
+Weather_Hardi_SUMS = Weather_Hardi %>%
+  dplyr::group_by(id, Year) %>%
   dplyr::arrange(id, Year, Day) %>%
-  dplyr::mutate(temp.lag1 = lag(freeze.day, n = 1)) %>%
-  dplyr::mutate(temp.30.previous = zoo::rollapply(data = temp.lag1, 
+  dplyr::mutate(freeze.lag1 = lag(freeze.day, n = 1)) %>%
+  dplyr::mutate(freeze.30.previous = zoo::rollapply(data = freeze.lag1, 
                                      width = 30, 
                                      FUN = sum, 
                                      align = "right", 
@@ -919,26 +787,17 @@ ThirtyDayMHD_freeze = Weather_Hardi %>%
                                      na.rm = T))
 
 #Check to ensure that there is a range of freezes 
-ThirtyDayMHD_freeze %>% group_by(temp.30.previous) %>% tally()
+Weather_Hardi_SUMS %>% group_by(freeze.30.previous) %>% tally()
 
-#Remove unneeded columns prior to the merge 
-ThirtyDayMHD_freeze = subset(ThirtyDayMHD_freeze, select = -c(Station, City, State, County, PostCode, latitude, longitude) )
-
-#Prep column form 
-ThirtyDayMHD_freeze$Year<-as.factor(ThirtyDayMHD_freeze$Year)
-
-
-#Merge weekly infection dataframe with datapoints showing the number of freezes freeze data frame 
-MHD30_freeze<-left_join(weeklyMHD, ThirtyDayMHD_freeze, by=c("week", "Year", "id"))
 
 #############################################################
-#Create the 60 DAY NUMBER OF FREEZES Infection Dataframe#
+#Create the 60 DAY SUMMED NUMBER OF FREEZES Column#
 #############################################################
-SixtyDayMHD_freeze = Weather_Hardi %>%
-    dplyr::group_by(id, Year) %>%
+Weather_Hardi_SUMS = Weather_Hardi_SUMS %>%
+  dplyr::group_by(id, Year) %>%
   dplyr::arrange(id, Year, Day) %>%
-  dplyr::mutate(temp.lag1 = lag(freeze.day, n = 1)) %>%
-  dplyr::mutate(temp.60.previous = zoo::rollapply(data = temp.lag1, 
+  dplyr::mutate(freeze.lag2 = lag(freeze.day, n = 1)) %>%
+  dplyr::mutate(freeze.60.previous = zoo::rollapply(data = freeze.lag2, 
                                      width = 60, 
                                      FUN = sum, 
                                      align = "right", 
@@ -946,239 +805,39 @@ SixtyDayMHD_freeze = Weather_Hardi %>%
                                      na.rm = T))
 
 #Check to ensure that there is a range of freezes 
-SixtyDayMHD_freeze %>% group_by(temp.60.previous) %>% tally()
-
-#Remove unneeded columns prior to the merge 
-SixtyDayMHD_freeze = subset(SixtyDayMHD_freeze, select = -c(freeze.day, temp.lag1,Station, City, State, County, PostCode, latitude, longitude) )
-
-#Prep column form 
-SixtyDayMHD_freeze$Year<-as.factor(SixtyDayMHD_freeze$Year)
+Weather_Hardi_SUMS %>% group_by(freeze.60.previous) %>% tally()
 
 
-#Merge weekly infection dataframe with datapoints showing the number of freezes freeze data frame 
-MHD60_freeze<-left_join(weeklyMHD, SixtyDayMHD_freeze, by=c("week", "Year", "id"))
-```
-
-
-
-
-
-
-
-
-Create Columns Asscoated with DEVELOPMENTAL ZERO that have Occurred at 7, 30, 60 days 
-
-```{r}
-
-#Turn each weather day into a 0 for above developmental zero or 1 for below developmental zero  
-dev.zero<-function (TMIN, Day){
-  dev.zero<-c()
-  for (i in 1:length(TMIN)){
-    if(is.na(TMIN[i])){
-      Dzero<-NA
-      }else if (TMIN[i]>11){
-      Dzero<-0
-    }else{
-      Dzero<-1
-    }
-    dev.zero<-c(dev.zero, Dzero)
-  }
-  return(dev.zero)
-}
-
-
-#and now the dev.zero day counter
-Weather_Hardi$Dev.Zero.days<-dev.zero(Weather_Hardi$TMIN, Weather_Hardi$Day)
-
-#Examine the number of freeze days to ensure a reasonable number have been recorded 
-Weather_Hardi %>% group_by(Dev.Zero.days) %>% tally()
-
-
-```
-
-
-
-```{r}
+############################################################
+#Create the 7 DAY SUMMED NUMBER OF FREEZES Column#
 #############################################################
-#Create the WEEKLY NUMBER OF FREEZES Infection Dataframe#
-#############################################################
-#Count the number of dev.zero days in each week and add to weekly data frame 
-DevZeroDataFrame<-aggregate(Dev.Zero.days~week+zone+id +Year, FUN=sum, data=Weather_Hardi, na.rm=TRUE)
-
-#Merge the freeze.day column into the weeklyMHD dataframe based on week, zone, station and year 
-  #Put columns that are shared between dataframes in the same format
-DevZeroDataFrame$Year<-as.factor(DevZeroDataFrame$Year)
-  #Merge 
-weeklyMHD_devzero<-left_join(weeklyMHD, DevZeroDataFrame, by=c("week", "Year", "id"))
-
-#Look at data to ensure accuracy 
-weeklyMHD_all3 %>% group_by(Dev.Zero.days) %>% tally()
-
-
-  
-  plot(Infection~ Dev.Zero.days, data = weeklyMHD_all3)
-
-#############################################################
-#Create the 30 DAY NUMBER OF FREEZES Infection Dataframe#
-#############################################################
-ThirtyDayMHD_devzero = Weather_Hardi %>%
-    dplyr::group_by(id, Year) %>%
+Weather_Hardi_SUMS = Weather_Hardi_SUMS %>%
+  dplyr::group_by(id, Year) %>%
   dplyr::arrange(id, Year, Day) %>%
-  dplyr::mutate(temp.lag1 = lag(Dev.Zero.days, n = 1)) %>%
-  dplyr::mutate(devzero.30.previous = zoo::rollapply(data = temp.lag1, 
-                                     width = 30, 
+  dplyr::mutate(freeze.lag0 = lag(freeze.day, n = 1)) %>%
+  dplyr::mutate(freeze.7.previous = zoo::rollapply(data = freeze.lag0, 
+                                     width = 7, 
                                      FUN = sum, 
                                      align = "right", 
                                      fill = NA, 
                                      na.rm = T))
 
 #Check to ensure that there is a range of freezes 
-ThirtyDayMHD_devzero %>% group_by(devzero.30.previous) %>% tally()
-
-#Remove unneeded columns prior to the merge 
-ThirtyDayMHD_devzero = subset(ThirtyDayMHD_devzero, select = -c(Station, City, State, County, PostCode, latitude, longitude) )
-
-#Prep column form 
-ThirtyDayMHD_devzero$Year<-as.factor(ThirtyDayMHD_devzero$Year)
-MHD$Year<-as.factor(MHD$Year)
-
-MHD$id<-MHD$Station
-
-
-
-#Merge weekly infection dataframe with datapoints showing the number of freezes freeze data frame 
-MHD30<-merge(MHD, ThirtyDayMHD_devzero, by=c("date", "id"))
-
-
-
-library(data.table)
-keys<-c("week", "Year", "id")
-tData<-data.table(MHD, key = keys)
-tBounce<-data.table(ThirtyDayMHD_devzero, key = keys)
-tData[tBounce, devzero.30.previous := 1L]
-tData %>% group_by(devzero.30.previous) %>% tally()
-
-
-  plot(Infection~ devzero.30.previous, data = MHD30_freeze)
-
-#############################################################
-#Create the 60 DAY NUMBER OF FREEZES Infection Dataframe#
-#############################################################
-SixtyDayMHD_devzero = Weather_Hardi %>%
-    dplyr::group_by(id, Year) %>%
-  dplyr::arrange(id, Year, Day) %>%
-  dplyr::mutate(temp.lag1 = lag(Dev.Zero.days, n = 1)) %>%
-  dplyr::mutate(devzero.60.previous = zoo::rollapply(data = temp.lag1, 
-                                     width = 60, 
-                                     FUN = sum, 
-                                     align = "right", 
-                                     fill = NA, 
-                                     na.rm = T))
-
-#Check to ensure that there is a range of freezes 
-SixtyDayMHD_devzero %>% group_by(devzero.60.previous) %>% tally()
-
-#Remove unneeded columns prior to the merge 
-SixtyDayMHD_devzero = subset(SixtyDayMHD_devzero, select = -c(freeze.day, temp.lag1,Station, City, State, County, PostCode, latitude, longitude) )
-
-#Prep column form 
-SixtyDayMHD_devzero$Year<-as.factor(SixtyDayMHD_devzero$Year)
-
-
-#Merge weekly infection dataframe with datapoints showing the number of freezes freeze data frame 
-MHD60_freeze<-left_join(MHD60_freeze, SixtyDayMHD_devzero, by=c("week", "Year", "id"))
+Weather_Hardi_SUMS %>% group_by(freeze.7.previous) %>% tally()
 ```
 
 
+Now Merge the freeze data with the monarch health observation data, allowing each monarch health observation to be paired with a corresponding weather observation including the summed window freeze data. 
 
-
-Create Columns Asscoated with TMIN AVG that have Occurred at 7, 30, 60 days
 ```{r}
-#############################################################
-#Create the WEEKLY AVG OF TMIN Infection Dataframe#
-#############################################################
-#Count the number of dev.zero days in each week and add to weekly data frame 
-TMINFrame<-aggregate(TMIN~week+zone+id +Year, FUN=mean, data=Weather_Hardi, na.rm=TRUE)
+#Prepare data columns for the merge
+MHD$date<-as.Date(MHD$date)
+MHD <- MHD %>% rename( id = Station)
+MHD$id<-as.factor(MHD$id)
+Weather_Hardi_SUMS$id<-as.factor(Weather_Hardi_SUMS$id)
 
-#Merge the freeze.day column into the weeklyMHD dataframe based on week, zone, station and year 
-  #Put columns that are shared between dataframes in the same format
-TMINFrame$Year<-as.factor(DevZeroDataFrame$Year)
-  #Merge 
-weeklyMHD_TMINavg<-left_join(weeklyMHD, TMINFrame, by=c("week", "Year", "id"))
-
-#Look at data to ensure accuracy 
-weeklyMHD_TMINavg %>% group_by(TMIN) %>% tally()
-
-#############################################################
-#Create the 30 DAY NUMBER OF FREEZES Infection Dataframe#
-#############################################################
-ThirtyDayMHD_TMIN = Weather_Hardi %>%
-    dplyr::group_by(id, Year) %>%
-  dplyr::arrange(id, Year, Day) %>%
-  dplyr::mutate(temp.lag1 = lag(TMIN, n = 1)) %>%
-  dplyr::mutate(TMIN.30.previous = zoo::rollapply(data = temp.lag1, 
-                                     width = 30, 
-                                     FUN = mean, 
-                                     align = "right", 
-                                     fill = NA, 
-                                     na.rm = T))
-
-#Check to ensure that there is a range of freezes 
-ThirtyDayMHD_TMIN %>% group_by(TMIN.30.previous) %>% tally()
-
-#Remove unneeded columns prior to the merge 
-ThirtyDayMHD_TMIN = subset(ThirtyDayMHD_TMIN, select = -c(Station, City, State, County, PostCode, latitude, longitude) )
-
-#Prep column form 
-ThirtyDayMHD_TMIN$Year<-as.factor(ThirtyDayMHD_TMIN$Year)
-
-
-#Merge weekly infection dataframe with datapoints showing the number of freezes freeze data frame 
-MHD30_freeze<-left_join(MHD30_freeze, ThirtyDayMHD_TMIN, by=c("week", "Year", "id"))
-
-#############################################################
-#Create the 60 DAY NUMBER OF FREEZES Infection Dataframe#
-#############################################################
-SixtyDayMHD_TMIN = Weather_Hardi %>%
-    dplyr::group_by(id, Year) %>%
-  dplyr::arrange(id, Year, Day) %>%
-  dplyr::mutate(temp.lag1 = lag(TMIN, n = 1)) %>%
-  dplyr::mutate(TMIN.60.previous = zoo::rollapply(data = temp.lag1, 
-                                     width = 60, 
-                                     FUN = mean, 
-                                     align = "right", 
-                                     fill = NA, 
-                                     na.rm = T))
-
-#Check to ensure that there is a range of freezes 
-SixtyDayMHD_TMIN %>% group_by(TMIN.60.previous) %>% tally()
-
-#Remove unneeded columns prior to the merge 
-SixtyDayMHD_TMIN = subset(SixtyDayMHD_TMIN, select = -c(freeze.day, temp.lag1,Station, City, State, County, PostCode, latitude, longitude) )
-
-#Prep column form 
-SixtyDayMHD_TMIN$Year<-as.factor(SixtyDayMHD_TMIN$Year)
-
-
-#Merge weekly infection dataframe with datapoints showing the number of freezes freeze data frame 
-MHD60_freeze<-left_join(MHD60_freeze, SixtyDayMHD_TMIN, by=c("week", "Year", "id"))
-```
-
-
-Writing and Merging The New DataFiles 
-```{r}
-write.csv(MHD30_freeze, "C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/MHD30Day.csv" )
-
-write.csv(MHD60_freeze, "C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/MHD60Day.csv" )
-
-weeklyMHD_all3<-left_join(weeklyMHD_TMINavg, weeklyMHD_freeze, by=c("week", "Year", "id"))
-weeklyMHD_all3<-left_join(weeklyMHD_all3, weeklyMHD_devzero, by=c("week", "Year", "id"))
-write.csv(weeklyMHD_all3, "C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/MHD7Day.csv" )
-
-
-
-
-
+#Merge 
+data<-merge(MHD, Weather_Hardi_SUMS, by=c("date", "id"))
 ```
 
 
@@ -1188,172 +847,31 @@ Each of these GAM models includes
 ```{r}
 library(mgcv)
 
-
-MHD30<-merge(MHD, ThirtyDayMHD_devzero, by=c("date", "id"))
-MHD30$zone.x<-as.factor(MHD30$zone.x)
-
-DZ30_gam <-mgcv:: gam(Infection ~ s(devzero.30.previous, k= 5) + Year + zone.x, data = MHD30_freeze)
-summary(DZ30_gam)
-plot(DZ30_gam)
-AIC(DZ30_gam)
-
-Z30_gam <-mgcv:: gam(Infection ~ s(devzero.30.previous, k= 5) + Year.x  , data = MHD30)
-summary(Z30_gam)
-plot(Z30_gam)
-AIC(Z30_gam)
-
-plot(Z30_gam, pages = 1,  trans = plogis,
-     shift = coef(Z30_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
-
-```
-
-
-
-
-
-
-
-```{r}
-#########################
-#######TMIN Models#####
-#########################
-weeklyMHD_freeze$zone.x<-as.factor(weeklyMHD_freeze$zone.x)
-weeklyMHD_freeze$zone<-as.numeric(weeklyMHD_freeze$zone.x)
-library(gam)
-
-
-TMIN7_gam <-mgcv:: gam(Infection ~ s(TMIN) + Year + zone.x, data = weeklyMHD_TMINavg)
-TMIN8_gam <-mgcv:: gam(Infection ~ s(TMIN) + Year , data = weeklyMHD_TMINavg)
-
-summary(TMIN7_gam)
-plot(TMIN7_gam)
-AIC(TMIN8_gam)
-
-TMIN30_gam <-mgcv:: gam(Infection ~ s(TMIN.30.previous) + Year + zone.x, data = MHD30_freeze)
-summary(TMIN30_gam)
-plot(TMIN30_gam)
-AIC(TMIN30_gam)
-
-
-TMIN60_gam <-mgcv:: gam(Infection ~ s(TMIN.60.previous) + Year + zone.x, data = MHD60_freeze)
-summary(TMIN60_gam)
-plot(TMIN60_gam)
-AIC(TMIN60_gam)
-
-
-AIC
-################################
-###########Dev Zero#############
-################################
-
-DZ7_gam <-mgcv:: gam(Infection ~ s(Dev.Zero.days, k= 5) + Year + zone.x, data = weeklyMHD_all3)
-summary(DZ7_gam)
-plot(DZ7_gam)
-AIC(DZ7_gam)
-
-
-DZ30_gam <-mgcv:: gam(Infection ~ s(devzero.30.previous, k= 5) + Year + zone.x, data = MHD30_freeze)
-summary(DZ30_gam)
-plot(DZ30_gam)
-AIC(DZ30_gam)
-
-
-DZ60_gam <-mgcv:: gam(Infection ~ s(devzero.60.previous) + Year + zone.x, data = MHD60_freeze)
-summary(DZ60_gam)
-plot(DZ60_gam)
-AIC(DZ60_gam)
-DZ60_gam$aic
-
-
-################################
-###########Freezes#############
-################################
-
-
-F7_gam <-mgcv:: gam(Infection ~ s(freeze.day, k= 5) + Year + zone.x, data = weeklyMHD_all3)
+F7_gam <-mgcv:: gam(Infection ~ s(freeze.7.previous, k=6) + s(Year.x, k= 5) , family = binomial, link = logit, data = data)
 summary(F7_gam)
-plot(F7_gam)
-F7_gam$aic
-
-F30_gam <-mgcv:: gam(Infection ~ s(temp.30.previous, k= 5) + Year + zone.x, data = MHD30_freeze)
-summary(F30_gam)
-plot(F30_gam)
-F30_gam$aic
-
-F60_gam <-mgcv:: gam(Infection ~ s(temp.60.previous) + Year + zone.x, data = MHD60_freeze)
-summary(F60_gam)
-plot(F60_gam)
-F60_gam$aic
-
-
-gam_modTIME <- gam(Infection ~  s(Day_Year, bs = "cc") + s(Year.Sampled,  k = 8) + ti(Day_Year, bs = "cc", by = Year.Sampled, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
-
-
-
-
-
+AIC(F7_gam)
+#18864.28
 plot(F7_gam, pages = 1,  trans = plogis,
      shift = coef(F7_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 
-save(Egam_mod0, file="Egam_mod0.Rdata")
 
+F30_gam <-mgcv:: gam(Infection ~ s(freeze.30.previous) +  s(Year.x, k= 5)  , family = binomial, link = logit, data = data)
+summary(F30_gam)
+AIC(F30_gam)
+#15771.4
+plot(F30_gam, pages = 1,  trans = plogis,
+     shift = coef(F30_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 
-summary(Egam_mod2)
+F60_gam <-mgcv:: gam(Infection ~ s(freeze.60.previous) + + s(Year.x, k= 5)  , family = binomial, link = logit, data = data)
+summary(F60_gam)
+AIC(F60_gam)
+#14036.62
+plot(F60_gam, pages = 1,  trans = plogis,
+     shift = coef(F60_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+
 
 ```
 
 
-
-
-
-
-weeklyMHD %>%
-  filter(weeklyMHD$zone == "10a" & weeklyMHD$Year == "2014") %>%
-ggplot(aes(x=YearWeek, y=Infection)) +
-  geom_point(alpha = 0.3,  position = position_jitter()) + stat_smooth(method = "loess") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.25, hjust=0.25))
-
-
-
-
-   
-geom_vline(data = weeklyMHD, xintercept = (Week=="2015-01-01"))
-
-```
-
-
-
-
-*Checking the Model*
-```{r}
-gam.check(Egam_mod)
-
-#gam.check does not seem to be the best method for visualizing logistic models
-
-library(arm)
-
-binnedplot(fitted(Egam_mod), 
-           residuals(Egam_mod, type = "response"), 
-           nclass = NULL, 
-           xlab = "Expected Values", 
-           ylab = "Average residual", 
-           main = "S Year", 
-           cex.pts = 0.8, 
-           col.pts = 1, 
-           col.int = "gray")
-
-```
-
-
-
-```{r}
-plot(Egam_mod3, residuals=FALSE, pages = 1,  trans = plogis,
-      seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
-```
-
-```{r}
-vis.gam(Egam_mod3, view=c("TMIN2","PRCP"),plot.type="contour", color = "terrain", contour.col = "black") 
-
-```
 
 
