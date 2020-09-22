@@ -678,7 +678,7 @@ First, explore the relationship between temperature and infection by graphing th
 ```{r}
 #Import the infection data 
 library(readr)
-MHD <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/YR_MHD_weather_hardi2.csv")
+MHD <- read_csv("./data/YR_MHD_weather_hardi2.csv")
 
 #Create a data frame with infection, week, hardiness zone (or other geographic variable) and year 
 
@@ -723,7 +723,7 @@ Import Weather Data and Code Days when *Freezes* Occurred as 1 in the Weather Da
 ###########DAILY FREEZE DATA################
 ############################################
 
-Weather_Hardi <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Hardi.csv")
+Weather_Hardi <- read_csv("./data/Weather_Hardi.csv")
 
 #Modify the weather data to prepare it for analysis 
   #Rename Columns to match MHD 
@@ -744,7 +744,7 @@ freeze.days<-function (TMIN, Day){
   for (i in 1:length(TMIN)){
     if(is.na(TMIN[i])){
       freezes<-NA
-      }else if (TMIN[i]>0){
+    }else if (TMIN[i]>0){
       freezes<-0
     }else{
       freezes<-1
@@ -755,7 +755,8 @@ freeze.days<-function (TMIN, Day){
 }
 
 #and now the freeze day counter
-Weather_Hardi$freeze.day<-freeze.days(Weather_Hardi$TMIN, Weather_Hardi$Day)
+#Weather_Hardi$freeze.day<-freeze.days(Weather_Hardi$TMIN, Weather_Hardi$Day)
+Weather_Hardi$freeze.day<- Weather_Hardi$TMIN < 0
 
 #Examine the number of freeze days to ensure a reasonable number have been recorded 
 library(dplyr)
@@ -789,8 +790,18 @@ Weather_Hardi_SUMS = Weather_Hardi %>%
 #Check to ensure that there is a range of freezes 
 Weather_Hardi_SUMS %>% group_by(freeze.30.previous) %>% tally()
 
+Weather_Hardi<-Weather_Hardi  %>% dplyr::arrange(id,Year,Month,Day)
 
-#############################################################
+#caz's code - not working correctly check number of rows in tmp
+tmp<-Weather_Hardi %>% 
+  tidyr::pivot_wider(id_cols=c(id),names_from=c(Year,Month,Day),values_from=freeze.day) %>% 
+  tidyr::pivot_longer(cols=2:ncol(tmp),names_to="date",values_to="freeze.day") %>%
+  tidyr::pivot_wider(id_cols=date,names_from=id,values_from=freeze.day)
+
+library(zoo)
+tmp2<-as.data.frame(tmp[,2:ncol(tmp)] %>% zoo::rollapply(width=7,FUN=function(x){sum(as.numeric(x),na.rm=T)},by.column=TRUE))
+
+#############################################################)
 #Create the 60 DAY SUMMED NUMBER OF FREEZES Column#
 #############################################################
 Weather_Hardi_SUMS = Weather_Hardi_SUMS %>%
