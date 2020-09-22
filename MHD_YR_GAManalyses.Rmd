@@ -1012,7 +1012,11 @@ DevZeroDataFrame$Year<-as.factor(DevZeroDataFrame$Year)
 weeklyMHD_devzero<-left_join(weeklyMHD, DevZeroDataFrame, by=c("week", "Year", "id"))
 
 #Look at data to ensure accuracy 
-weeklyMHD_devzero %>% group_by(Dev.Zero.days) %>% tally()
+weeklyMHD_all3 %>% group_by(Dev.Zero.days) %>% tally()
+
+
+  
+  plot(Infection~ Dev.Zero.days, data = weeklyMHD_all3)
 
 #############################################################
 #Create the 30 DAY NUMBER OF FREEZES Infection Dataframe#
@@ -1036,10 +1040,26 @@ ThirtyDayMHD_devzero = subset(ThirtyDayMHD_devzero, select = -c(Station, City, S
 
 #Prep column form 
 ThirtyDayMHD_devzero$Year<-as.factor(ThirtyDayMHD_devzero$Year)
+MHD$Year<-as.factor(MHD$Year)
+
+MHD$id<-MHD$Station
+
 
 
 #Merge weekly infection dataframe with datapoints showing the number of freezes freeze data frame 
-MHD30_freeze<-left_join(MHD30_freeze, ThirtyDayMHD_devzero, by=c("week", "Year", "id"))
+MHD30<-merge(MHD, ThirtyDayMHD_devzero, by=c("date", "id"))
+
+
+
+library(data.table)
+keys<-c("week", "Year", "id")
+tData<-data.table(MHD, key = keys)
+tBounce<-data.table(ThirtyDayMHD_devzero, key = keys)
+tData[tBounce, devzero.30.previous := 1L]
+tData %>% group_by(devzero.30.previous) %>% tally()
+
+
+  plot(Infection~ devzero.30.previous, data = MHD30_freeze)
 
 #############################################################
 #Create the 60 DAY NUMBER OF FREEZES Infection Dataframe#
@@ -1168,6 +1188,32 @@ Each of these GAM models includes
 ```{r}
 library(mgcv)
 
+
+MHD30<-merge(MHD, ThirtyDayMHD_devzero, by=c("date", "id"))
+MHD30$zone.x<-as.factor(MHD30$zone.x)
+
+DZ30_gam <-mgcv:: gam(Infection ~ s(devzero.30.previous, k= 5) + Year + zone.x, data = MHD30_freeze)
+summary(DZ30_gam)
+plot(DZ30_gam)
+AIC(DZ30_gam)
+
+Z30_gam <-mgcv:: gam(Infection ~ s(devzero.30.previous, k= 5) + Year.x  , data = MHD30)
+summary(Z30_gam)
+plot(Z30_gam)
+AIC(Z30_gam)
+
+plot(Z30_gam, pages = 1,  trans = plogis,
+     shift = coef(Z30_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+
+```
+
+
+
+
+
+
+
+```{r}
 #########################
 #######TMIN Models#####
 #########################
