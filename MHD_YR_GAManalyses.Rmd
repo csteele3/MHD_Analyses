@@ -22,7 +22,7 @@ GAM Work with Monarch Health Data
 We do not expect the patterns in disease prevalence as described by our predictor variables to be linear. For example, infection prevalence may experience increases during periods of warm weather such as in late fall and early spring, while mid winter low temperatures may result in a decline in infection prevalence as population density and therefore transmission potential declines. Graphs of the dataset are provided below for visual inspection of the linear or non-linear trends.  
 
 *Dataset*
-```{r}
+```{r MHD Dataset}
 #The below dataset should be used to examine winter OE data  
 #wdata <- read.csv("./data/MHD_WD.csv", colClasses = c("Pop_density_CAT" = "factor", "Hardiness2" = "factor", "Infection_Severity" = "factor", "Month"= "factor", "Year"= "factor"))
 
@@ -675,10 +675,12 @@ In the Brown et al. paper, they used the GAMs in the previous step to determine 
 
 
 First, explore the relationship between temperature and infection by graphing the data. 
-```{r}
+```{r Temperature by Infection Graph}
 #Import the infection data 
 library(readr)
+#MHD<- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/YR_MHD_weather_hardi2.csv")
 MHD <- read_csv("./data/YR_MHD_weather_hardi2.csv")
+
 
 #Create a data frame with infection, week, hardiness zone (or other geographic variable) and year 
 
@@ -718,18 +720,21 @@ filter(Year == "2016" ,zone == "10a") %>%
 
 
 Import Weather Data and Code Days when *Freezes* Occurred as 1 in the Weather Data Set 
-```{r}
+```{r Create Daily Freeze Dataframe}
 ############################################
 ###########DAILY FREEZE DATA################
 ############################################
-
+library(readr)
+#Weather_Hardi <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Hardi.csv")
 Weather_Hardi <- read_csv("./data/Weather_Hardi.csv")
 
 #Modify the weather data to prepare it for analysis 
   #Rename Columns to match MHD 
+library(dplyr)
 Weather_Hardi<-Weather_Hardi %>%
   rename(Year = Year.Sampled,
     Station = StationName)
+
  #Make sure date column is in correct format 
 library(lubridate)
 Weather_Hardi$date<- parse_date_time(Weather_Hardi$date, orders = c("mdy", "dmy","ymd"))
@@ -755,24 +760,85 @@ freeze.days<-function (TMIN, Day){
 }
 
 #and now the freeze day counter
-#Weather_Hardi$freeze.day<-freeze.days(Weather_Hardi$TMIN, Weather_Hardi$Day)
-Weather_Hardi$freeze.day<- Weather_Hardi$TMIN < 0
+#this took my computer 1.5 minutes to run
+Weather_Hardi$freeze.day<-freeze.days(Weather_Hardi$TMIN, Weather_Hardi$Day)
+#Weather_Hardi$freeze.day<- Weather_Hardi$TMIN < 0
 
 #Examine the number of freeze days to ensure a reasonable number have been recorded 
-library(dplyr)
 Weather_Hardi %>% group_by(freeze.day) %>% tally()
 ```
 
+Next, the data need to go through a series of steps to arrange them for calculating the number of freezes inside of the desired window
+```{r Preparing freeze data for window tabulation}
+###############################################################
+#Prepare data for the "roll apply"" function by arranging the stations as columns with date 
+###############################################################
+  
+  #Create a data frame with only the id of the weather station, the date and the freeze code 
+DailyFreezeSubset = subset(Weather_Hardi, select = c(id, date, freeze.day) )
+
+  #Split the "id" column into 95 separate columns (one for each station)
+library(tidyr)
+DFS<-DailyFreezeSubset %>% 
+   mutate(rn = row_number()) %>%
+   spread(id,  freeze.day) %>%
+   select(-rn)
+
+  #Remove NAs and collapse date column to 1 date per day
+library(data.table)
+DFS2<-setDT(DFS)[, lapply(.SD, function(x) x[!is.na(x)][1L]), by = date]
+```
+
+
+
+
 Count the number of *freezes* in the previous 7 days, 30 days and 60 days from when an observation was made 
+```{r Count the number of *freezes* in the previous 7 days}
+############################################
+###########Apply RollApply Function#########
+############################################
+
+#Calculate the number of freezes 7 days prior to every observation
+library(zoo)
+DFSroll<-rollapply(data = DFS2 [,c(2:96)],width = 7, 
+                                     FUN = sum, 
+                                     align = "right", 
+                                     fill = NA, 
+                                     by.column = TRUE,
+                                     na.rm = T)
+
+#Turn zoo matrix into data frame
+DFSroll<-as.data.frame(DFSroll)
+
+#Add date column back into
+Freeze7 <- cbind(DFSroll, date = DFS2$date)
+
+#Turn station ID back into a single column for model analysis   
+Freeze7<-Freeze7 %>%  gather(id, freeze.day,c(1:95)) 
+
+#Check to ensure that there is a range of freezes 
+Freeze7 %>% group_by(freeze.day) %>% tally()
+
+```
+
+
+
+Now Merge the freeze data with the monarch health observation data, allowing each monarch health observation to be paired with a corresponding weather observation including the summed window freeze data. 
+
+```{r Merge freeze and infection data}
+#Prepare data columns for the merge
+MHD$date<-as.Date(MHD$date)
+MHD <- MHD %>% rename( id = Station)
+MHD$id<-as.factor(MHD$id)
+Weather_Hardi_SUMS$id<-as.factor(Weather_Hardi_SUMS$id)
+
+#Merge 
+data<-merge(MHD, Freeze7, by=c("date", "id"))
+```
+
+
+
 ```{r}
-############################################
-###########SUMMED FREEZE DATA################
-############################################
-
-#
-
-
-
 #############################################################
 #Create the 30 DAY SUMMED NUMBER OF FREEZES Column#
 #############################################################
@@ -790,17 +856,14 @@ Weather_Hardi_SUMS = Weather_Hardi %>%
 #Check to ensure that there is a range of freezes 
 Weather_Hardi_SUMS %>% group_by(freeze.30.previous) %>% tally()
 
+
+
 Weather_Hardi<-Weather_Hardi  %>% dplyr::arrange(id,Year,Month,Day)
 
-#caz's code - not working correctly check number of rows in tmp
-tmp<-Weather_Hardi %>% 
-  tidyr::pivot_wider(id_cols=c(id),names_from=c(Year,Month,Day),values_from=freeze.day) %>% 
-  tidyr::pivot_longer(cols=2:ncol(tmp),names_to="date",values_to="freeze.day") %>%
-  tidyr::pivot_wider(id_cols=date,names_from=id,values_from=freeze.day)
 
-library(zoo)
-tmp2<-as.data.frame(tmp[,2:ncol(tmp)] %>% zoo::rollapply(width=7,FUN=function(x){sum(as.numeric(x),na.rm=T)},by.column=TRUE))
 
+
+  
 #############################################################)
 #Create the 60 DAY SUMMED NUMBER OF FREEZES Column#
 #############################################################
@@ -819,46 +882,18 @@ Weather_Hardi_SUMS = Weather_Hardi_SUMS %>%
 Weather_Hardi_SUMS %>% group_by(freeze.60.previous) %>% tally()
 
 
-############################################################
-#Create the 7 DAY SUMMED NUMBER OF FREEZES Column#
-#############################################################
-Weather_Hardi_SUMS = Weather_Hardi_SUMS %>%
-  dplyr::group_by(id, Year) %>%
-  dplyr::arrange(id, Year, Day) %>%
-  dplyr::mutate(freeze.lag0 = lag(freeze.day, n = 1)) %>%
-  dplyr::mutate(freeze.7.previous = zoo::rollapply(data = freeze.lag0, 
-                                     width = 7, 
-                                     FUN = sum, 
-                                     align = "right", 
-                                     fill = NA, 
-                                     na.rm = T))
 
-#Check to ensure that there is a range of freezes 
-Weather_Hardi_SUMS %>% group_by(freeze.7.previous) %>% tally()
 ```
 
-
-Now Merge the freeze data with the monarch health observation data, allowing each monarch health observation to be paired with a corresponding weather observation including the summed window freeze data. 
-
-```{r}
-#Prepare data columns for the merge
-MHD$date<-as.Date(MHD$date)
-MHD <- MHD %>% rename( id = Station)
-MHD$id<-as.factor(MHD$id)
-Weather_Hardi_SUMS$id<-as.factor(Weather_Hardi_SUMS$id)
-
-#Merge 
-data<-merge(MHD, Weather_Hardi_SUMS, by=c("date", "id"))
-```
 
 
 
 *Environmental Variable Models* 
 Each of these GAM models includes 
-```{r}
+```{r GAM Models with Freeze Data}
 library(mgcv)
 
-F7_gam <-mgcv:: gam(Infection ~ s(freeze.7.previous, k=6) + s(Year.x, k= 5) , family = binomial, link = logit, data = data)
+F7_gam <-mgcv:: gam(Infection ~ s(freeze.day, k=6) + s(Year, k= 5) , family = binomial, link = logit, data = data)
 summary(F7_gam)
 AIC(F7_gam)
 #18864.28
