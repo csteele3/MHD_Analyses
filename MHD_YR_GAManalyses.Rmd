@@ -787,19 +787,21 @@ DailyFreezeSubset = subset(Weather_Hardi, select = c(id, date, freeze.day) )
 
   #Split the "id" column into 95 separate columns (one for each station)
 library(tidyr)
-DFS<-DailyFreezeSubset %>% 
-   mutate(rn = row_number()) %>%
-   spread(id,  freeze.day) %>%
-   select(-rn)
+#DFS<-DailyFreezeSubset %>% 
+#   mutate(rn = row_number()) %>%
+#   spread(id,  freeze.day) %>%
+#   select(-rn)
+
+DFS<-DailyFreezeSubset %>% pivot_wider(id_cols=date,names_from = id,values_from=freeze.day) %>% arrange(date)
 
 DFS %>% group_by(USC00083163) %>% tally()
 #Each station should have over 2500 observations (note: this station is in Fort Lauderdale and should have no freezes)
 
 
   #Remove NAs and collapse date column to 1 date per day
-library(data.table)
-DFS2<-setDT(DFS)[, lapply(.SD, function(x) x[!is.na(x)][1L]), by = date]
-DFS2 %>% group_by(USC00083163) %>% tally()
+#library(data.table)
+#DFS2<-setDT(DFS)[, lapply(.SD, function(x) x[!is.na(x)][1L]), by = date]
+#DFS2 %>% group_by(USC00083163) %>% tally()
 #Same number of observations for 0 
 
 ```
@@ -808,14 +810,14 @@ DFS2 %>% group_by(USC00083163) %>% tally()
 
 
 Count the number of *freezes* in the previous 7 days, 30 days and 60 days from when an observation was made 
-```{r Count the number of *freezes* in the previous 7 days}
+```{r Count the number of freezes in the previous 7 days}
 ############################################
 ###########Apply RollApply Function#########
 ############################################
 
 #Calculate the number of freezes 7 days prior to every observation
 library(zoo)
-DFSroll<-rollapply(data = DFS2 [,c(2:96)],width = 7, 
+DFSroll<-rollapply(data = DFS [,c(2:96)],width = 7, 
                                      FUN = sum, 
                                      align = "right", 
                                      fill = NA, 
@@ -826,11 +828,11 @@ DFSroll<-rollapply(data = DFS2 [,c(2:96)],width = 7,
 DFSroll<-as.data.frame(DFSroll)
 
 #Add date column back into
-Freeze7 <- cbind(DFSroll, date = DFS2$date)
-#Is it risky to assume these are all correctly aligned with the correct date? 
+Freeze7 <- cbind(date = DFS$date,DFSroll )
 
 #Turn station ID back into a single column for model analysis   
-Freeze7<-Freeze7 %>%  gather(id, freeze.day,c(1:95)) 
+#Freeze7<-Freeze7 %>%  gather(id, freeze.day,c(2:ncol(Freeze7))) 
+Freeze7<-Freeze7 %>% pivot_longer(cols=2:ncol(Freeze7),names_to="id",values_to="freeze.day")
 
 #Check to ensure that there is a range of freezes 
 Freeze7 %>% group_by(freeze.day) %>% tally()
@@ -848,15 +850,17 @@ MHD <- MHD %>% rename( id = Station)
 MHD$id<-as.factor(MHD$id)
 Freeze7$id<-as.factor(Freeze7$id)
 
+levels(Freeze7$id)
+levels(MHD$id)
+
 #Merge 
-data<-left_join(MHD, Freeze7, by=c("date", "id"))
+MHD_freeze<-left_join(MHD, Freeze7, by=c("date", "id"))
 #Lost 3,000 observations for some reason 
 
-#It appears as though there are only 88 stations in the MHD data frame. Perhaps some are not pairing correctly with the weather stations. 
-Fids <- data.frame( "Fid" = unique(Freeze7$id)) 
-                   
-Mids <- data.frame("Mid"=unique(MHD$id))
+summary(MHD_freeze)
 
+#check that all  stations in the MHD data frame are paired correctly with the weather stations. should return TRUE
+all(unique(MHD$id) %in% unique(Freeze7$id))
 
 ```
 
@@ -866,8 +870,8 @@ Mids <- data.frame("Mid"=unique(MHD$id))
 Each of these GAM models includes 
 ```{r GAM Models with Freeze Data}
 library(mgcv)
-
-F7_gam <-mgcv:: gam(Infection ~ s(freeze.day, k=6) + s(Year, k= 5) + s(longitude,latitude) , family = binomial, link = logit, data = data)
+MHD_freeze$Volunteer<-as.factor(MHD_freeze$Volunteer)
+F7_gam <-mgcv:: gam(Infection ~ s(freeze.day, k=6) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = MHD_freeze)
 summary(F7_gam)
 AIC(F7_gam)
 #18864.28
@@ -881,7 +885,7 @@ plot(F7_gam, pages = 1,  trans = plogis,
 
 
 ##############For comparison TMIN model 
-TMIN_gam <-mgcv:: gam(Infection ~ s(TMIN) + s(Year, k= 5) + s(longitude,latitude), family = binomial, link = logit, data = data)
+TMIN_gam <-mgcv:: gam(Infection ~ s(TMIN) + s(Year, k= 5) + s(longitude,latitude), family = binomial, link = logit, data = MHD_freeze)
 summary(TMIN_gam)
 AIC(TMIN_gam)
 #18864.28
