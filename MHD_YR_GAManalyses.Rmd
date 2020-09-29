@@ -712,9 +712,9 @@ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
 
 #Create dataframe with YearWeek Freezes 
-weeklyMHD_all3 %>%
-filter(Year == "2016" ,zone == "10a") %>%
-  #Need to add uniqe values of freeze weeks and then add to figure as x intercepts 
+# weeklyMHD_all3 %>%
+# filter(Year == "2016" ,zone == "10a") %>%
+#   #Need to add uniqe values of freeze weeks and then add to figure as x intercepts 
   
 ```
 
@@ -724,52 +724,60 @@ Import Weather Data and Code Days when *Freezes* Occurred as 1 in the Weather Da
 ############################################
 ###########DAILY FREEZE DATA################
 ############################################
-library(readr)
-#Weather_Hardi <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Hardi.csv")
-Weather_Hardi <- read_csv("./data/Weather_Hardi.csv")
+# #Weather_Hardi <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Hardi.csv")
+# Weather_Hardi <- read_csv("./data/Weather_Hardi.csv")
+# 
+# #Modify the weather data to prepare it for analysis 
+#   #Rename Columns to match MHD 
+# library(dplyr)
+# Weather_Hardi<-Weather_Hardi %>%
+#   rename(Year = Year.Sampled,
+#     Station = StationName)
+# 
+#  #Make sure date column is in correct format 
+# library(lubridate)
+# Weather_Hardi$date<- parse_date_time(Weather_Hardi$date, orders = c("mdy", "dmy","ymd"))
+# Weather_Hardi$date<-as.Date(Weather_Hardi$date)  
+# #Create the week variable 
+# Weather_Hardi$week <- week(Weather_Hardi$date)
+# 
+# #Turn each daily observation into a 0 or 1 for freezes, developmental 0 and then count the number of occurrences in a week. 
+# #Function for counting the number of freezes. Starting with identifying freeze days. 
+# freeze.days<-function (TMIN, Day){
+#   freeze.days<-c()
+#   for (i in 1:length(TMIN)){
+#     if(is.na(TMIN[i])){
+#       freezes<-NA
+#     }else if (TMIN[i]>0){
+#       freezes<-0
+#     }else{
+#       freezes<-1
+#     }
+#     freeze.days<-c(freeze.days, freezes)
+#   }
+#   return(freeze.days)
+# }
+# 
+# #and now the freeze day counter
+# #this took my computer 1.5 minutes to run
+# Weather_Hardi$freeze.day<-freeze.days(Weather_Hardi$TMIN, Weather_Hardi$Day)
+# #Weather_Hardi$freeze.day<- Weather_Hardi$TMIN < 0
+# 
+# 
+# #Examine the number of freeze days to ensure a reasonable number have been recorded 
+# Weather_Hardi %>% group_by(freeze.day) %>% tally()
+# 
+# write.csv(Weather_Hardi, "C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Freeze.csv" )
 
-#Modify the weather data to prepare it for analysis 
-  #Rename Columns to match MHD 
-library(dplyr)
-Weather_Hardi<-Weather_Hardi %>%
-  rename(Year = Year.Sampled,
-    Station = StationName)
 
- #Make sure date column is in correct format 
-library(lubridate)
-Weather_Hardi$date<- parse_date_time(Weather_Hardi$date, orders = c("mdy", "dmy","ymd"))
-Weather_Hardi$date<-as.Date(Weather_Hardi$date)  
-#Create the week variable 
-Weather_Hardi$week <- week(Weather_Hardi$date)
+#Weather_Hardi <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Freeze.csv")
+Weather_Hardi <- read_csv("./data/Weather_Freeze.csv")
 
-#Turn each daily observation into a 0 or 1 for freezes, developmental 0 and then count the number of occurrences in a week. 
-#Function for counting the number of freezes. Starting with identifying freeze days. 
-freeze.days<-function (TMIN, Day){
-  freeze.days<-c()
-  for (i in 1:length(TMIN)){
-    if(is.na(TMIN[i])){
-      freezes<-NA
-    }else if (TMIN[i]>0){
-      freezes<-0
-    }else{
-      freezes<-1
-    }
-    freeze.days<-c(freeze.days, freezes)
-  }
-  return(freeze.days)
-}
-
-#and now the freeze day counter
-#this took my computer 1.5 minutes to run
-Weather_Hardi$freeze.day<-freeze.days(Weather_Hardi$TMIN, Weather_Hardi$Day)
-#Weather_Hardi$freeze.day<- Weather_Hardi$TMIN < 0
-
-#Examine the number of freeze days to ensure a reasonable number have been recorded 
 Weather_Hardi %>% group_by(freeze.day) %>% tally()
 ```
 
 Next, the data need to go through a series of steps to arrange them for calculating the number of freezes inside of the desired window
-```{r Preparing freeze data for window tabulation}
+```{r Preparing freeze data for 7 day window tabulation}
 ###############################################################
 #Prepare data for the "roll apply"" function by arranging the stations as columns with date 
 ###############################################################
@@ -784,9 +792,16 @@ DFS<-DailyFreezeSubset %>%
    spread(id,  freeze.day) %>%
    select(-rn)
 
+DFS %>% group_by(USC00083163) %>% tally()
+#Each station should have over 2500 observations (note: this station is in Fort Lauderdale and should have no freezes)
+
+
   #Remove NAs and collapse date column to 1 date per day
 library(data.table)
 DFS2<-setDT(DFS)[, lapply(.SD, function(x) x[!is.na(x)][1L]), by = date]
+DFS2 %>% group_by(USC00083163) %>% tally()
+#Same number of observations for 0 
+
 ```
 
 
@@ -812,6 +827,7 @@ DFSroll<-as.data.frame(DFSroll)
 
 #Add date column back into
 Freeze7 <- cbind(DFSroll, date = DFS2$date)
+#Is it risky to assume these are all correctly aligned with the correct date? 
 
 #Turn station ID back into a single column for model analysis   
 Freeze7<-Freeze7 %>%  gather(id, freeze.day,c(1:95)) 
@@ -825,16 +841,83 @@ Freeze7 %>% group_by(freeze.day) %>% tally()
 
 Now Merge the freeze data with the monarch health observation data, allowing each monarch health observation to be paired with a corresponding weather observation including the summed window freeze data. 
 
-```{r Merge freeze and infection data}
+```{r Merge freeze and infection data: PROBLEM HERE?}
 #Prepare data columns for the merge
 MHD$date<-as.Date(MHD$date)
 MHD <- MHD %>% rename( id = Station)
 MHD$id<-as.factor(MHD$id)
-Weather_Hardi_SUMS$id<-as.factor(Weather_Hardi_SUMS$id)
+Freeze7$id<-as.factor(Freeze7$id)
 
 #Merge 
-data<-merge(MHD, Freeze7, by=c("date", "id"))
+data<-left_join(MHD, Freeze7, by=c("date", "id"))
+#Lost 3,000 observations for some reason 
+
+#It appears as though there are only 88 stations in the MHD data frame. Perhaps some are not pairing correctly with the weather stations. 
+Fids <- data.frame( "Fid" = unique(Freeze7$id)) 
+                   
+Mids <- data.frame("Mid"=unique(MHD$id))
+
+
 ```
+
+
+
+*Environmental Variable Models* 
+Each of these GAM models includes 
+```{r GAM Models with Freeze Data}
+library(mgcv)
+
+F7_gam <-mgcv:: gam(Infection ~ s(freeze.day, k=6) + s(Year, k= 5) + s(longitude,latitude) , family = binomial, link = logit, data = data)
+summary(F7_gam)
+AIC(F7_gam)
+#18864.28
+plot(F7_gam, pages = 1,  trans = plogis,
+     shift = coef(F7_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+
+
+
+
+
+
+
+##############For comparison TMIN model 
+TMIN_gam <-mgcv:: gam(Infection ~ s(TMIN) + s(Year, k= 5) + s(longitude,latitude), family = binomial, link = logit, data = data)
+summary(TMIN_gam)
+AIC(TMIN_gam)
+#18864.28
+plot(TMIN_gam, pages = 1,  trans = plogis,
+     shift = coef(F7_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
