@@ -719,8 +719,9 @@ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ```
 
 
-*Freeze Calculations*
 
+
+*Build Freeze Dataframe*
 Import Weather Data and Code Days when *Freezes* Occurred as 1 in the Weather Data Set 
 ```{r Create Daily Freeze Dataframe}
 ############################################
@@ -741,38 +742,38 @@ Weather_Hardi$date<- parse_date_time(Weather_Hardi$date, orders = c("mdy", "dmy"
 Weather_Hardi$date<-as.Date(Weather_Hardi$date)
 #Create the week variable
 Weather_Hardi$week <- week(Weather_Hardi$date)
-# 
-# #Turn each daily observation into a 0 or 1 for freezes, developmental 0 and then count the number of occurrences in a week. 
-# #Function for counting the number of freezes. Starting with identifying freeze days. 
-# freeze.days<-function (TMIN, Day){
-#   freeze.days<-c()
-#   for (i in 1:length(TMIN)){
-#     if(is.na(TMIN[i])){
-#       freezes<-NA
-#     }else if (TMIN[i]>0){
-#       freezes<-0
-#     }else{
-#       freezes<-1
-#     }
-#     freeze.days<-c(freeze.days, freezes)
-#   }
-#   return(freeze.days)
-# }
-# 
-# #and now the freeze day counter
-# #this took my computer 1.5 minutes to run
-# Weather_Hardi$freeze.day<-freeze.days(Weather_Hardi$TMIN, Weather_Hardi$Day)
-# #Weather_Hardi$freeze.day<- Weather_Hardi$TMIN < 0
-# 
-# 
-# #Examine the number of freeze days to ensure a reasonable number have been recorded 
-# Weather_Hardi %>% group_by(freeze.day) %>% tally()
-# 
-# write.csv(Weather_Hardi, "C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Freeze.csv" )
+
+#Turn each daily observation into a 0 or 1 for freezes, developmental 0 and then count the number of occurrences in a week.
+#Function for counting the number of freezes. Starting with identifying freeze days.
+freeze.days<-function (TMIN, Day){
+  freeze.days<-c()
+  for (i in 1:length(TMIN)){
+    if(is.na(TMIN[i])){
+      freezes<-NA
+    }else if (TMIN[i]>0){
+      freezes<-0
+    }else{
+      freezes<-1
+    }
+    freeze.days<-c(freeze.days, freezes)
+  }
+  return(freeze.days)
+}
+
+#and now the freeze day counter
+#this took my computer 1.5 minutes to run
+Weather_Hardi$freeze.day<-freeze.days(Weather_Hardi$TMIN, Weather_Hardi$Day)
+#Weather_Hardi$freeze.day<- Weather_Hardi$TMIN < 0
+
+
+#Examine the number of freeze days to ensure a reasonable number have been recorded
+Weather_Hardi %>% group_by(freeze.day) %>% tally()
+
+#write.csv(Weather_Hardi, "C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Freeze.csv" )
 
 
 #Weather_Hardi <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Freeze.csv")
-Weather_Hardi <- read_csv("./data/Weather_Freeze.csv")
+#Weather_Hardi <- read_csv("./data/Weather_Freeze.csv")
 
 Weather_Hardi %>% group_by(freeze.day) %>% tally()
 ```
@@ -810,6 +811,7 @@ DFS %>% group_by(USC00083163) %>% tally()
 
 
 
+*7 Day Freeze Window Calculations*
 Count the number of *freezes* in the previous 7 days, 30 days and 60 days from when an observation was made 
 ```{r Count the number of freezes in the previous 7 days}
 ############################################
@@ -839,13 +841,8 @@ Freeze7<-Freeze7 %>% pivot_longer(cols=2:ncol(Freeze7),names_to="id",values_to="
 #Check to ensure that there is a range of freezes 
 Freeze7 %>% group_by(freeze.day) %>% tally()
 
-```
+#Now Merge the freeze data with the monarch health observation data, allowing each monarch health observation to be paired with a corresponding weather observation including the summed window freeze data. 
 
-
-
-Now Merge the freeze data with the monarch health observation data, allowing each monarch health observation to be paired with a corresponding weather observation including the summed window freeze data. 
-
-```{r Merge freeze and infection data}
 #Prepare data columns for the merge
 MHD$date<-as.Date(MHD$date)
 MHD <- MHD %>% rename( id = Station)
@@ -864,8 +861,9 @@ all(unique(MHD$id) %in% unique(Freeze7$id))
 
 ```
 
-30 Day Freeze Window 
-```{r}
+
+*30 Day Freeze Window*
+```{r 30 Day Freeze Window Calculations}
 #Weather_Hardi <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Freeze.csv")
 Weather_Hardi <- read_csv("./data/Weather_Freeze.csv")
 
@@ -915,7 +913,7 @@ all(unique(MHD$id) %in% unique(Freeze7$id))
 
 
 
-Developmental Zero Calculations 
+*Developmental Zero Calculations* 
 
 ```{r}
 ###########################################
@@ -960,7 +958,61 @@ Weather_Hardi$devzero.day<-DevZero.days(Weather_Hardi$TMIN, Weather_Hardi$Day)
 
 #Examine the number of dev zero days to ensure a reasonable number have been recorded
 Weather_Hardi %>% group_by(devzero.day) %>% tally()
+```
 
+
+*Dev Zero 7 Day Calculations*
+```{r Dev Zero 7 Day Calculations}
+
+##################################
+#Use RollApply to Count DEvZero in 7, 30 day increments#
+##################################
+DailyDevZeroSubset = subset(Weather_Hardi, select = c(id, date, devzero.day) )
+DZS<-DailyDevZeroSubset %>% pivot_wider(id_cols=date,names_from = id,values_from=devzero.day) %>% arrange(date)
+
+#Calculate the number of freezes 7 days prior to every observation
+library(zoo)
+ZRoll<-rollapply(data = DZS [,c(2:96)],width = 7, 
+                                     FUN = sum, 
+                                     align = "right", 
+                                     fill = NA, 
+                                     by.column = TRUE,
+                                     na.rm = T)
+
+
+#Turn zoo matrix into data frame
+ZRoll<-as.data.frame(ZRoll)
+
+#Add date column back into
+DevZeroData <- cbind(date = DZS$date,ZRoll )
+
+#Turn station ID back into a single column for model analysis   
+#Freeze7<-Freeze7 %>%  gather(id, freeze.day,c(2:ncol(Freeze7))) 
+DevZero_7DayData<-DevZeroData %>% pivot_longer(cols=2:ncol(DevZeroData),names_to="id",values_to="devzero.day")
+
+#Check to ensure that there is a range of freezes 
+DevZero_7DayData %>% group_by(devzero.day) %>% tally()
+#
+
+#Prepare data columns for the merge
+MHD$date<-as.Date(MHD$date)
+MHD <- MHD %>% rename( id = Station)
+MHD$id<-as.factor(MHD$id)
+DevZeroData$id<-as.factor(DevZeroData$id)
+
+levels(DevZeroData$id)
+levels(MHD$id)
+
+#Merge 
+DevZeroData7<-left_join(MHD, DevZero_7DayData, by=c("date", "id"))
+summary(DevZeroData30)
+
+#check that all  stations in the MHD data frame are paired correctly with the weather stations. should return TRUE
+all(unique(MHD$id) %in% unique(Freeze7$id))
+```
+
+*Dev Zero 30 Day Calculations*
+```{r}
 
 ##################################
 #Use RollApply to Count DEvZero in 7, 30 day increments#
@@ -1010,9 +1062,10 @@ all(unique(MHD$id) %in% unique(Freeze7$id))
 ```
 
 
+*TMIN Calculations*
 
-TMIN Calculations 
-```{r 7 Day TMIN Calculations}
+TMIN 7 Day Window Calculations
+```{r TMIN 7 Day Window Calculations}
 library(tidyr)
 TMINSubset = subset(Weather_Hardi, select = c(id, date, TMIN) )
 TMINS<-TMINSubset %>% pivot_wider(id_cols=date,names_from = id,values_from=TMIN) %>% arrange(date)
@@ -1050,6 +1103,44 @@ TMINData7<-left_join(MHD, TMINData, by=c("date", "id"))
 summary(TMINData7)
 ```
 
+TMIN 30 Day Window Calculations
+```{r TMIN 30 Day Window Calculations}
+library(tidyr)
+TMINSubset = subset(Weather_Hardi, select = c(id, date, TMIN) )
+TMINS<-TMINSubset %>% pivot_wider(id_cols=date,names_from = id,values_from=TMIN) %>% arrange(date)
+
+#Calculate the number of freezes 7 days prior to every observation
+library(zoo)
+TRoll<-rollapply(data = TMINS [,c(2:96)],width = 30, 
+                                     FUN = mean, 
+                                     align = "right", 
+                                     fill = NA, 
+                                     by.column = TRUE,
+                                     na.rm = T)
+
+
+#Turn zoo matrix into data frame
+TRoll<-as.data.frame(TRoll)
+
+#Add date column back into
+TMINData <- cbind(date = TMINS$date,TRoll )
+
+#Turn station ID back into a single column for model analysis   
+TMINData<-TMINData %>% pivot_longer(cols=2:ncol(TMINData),names_to="id",values_to="TMIN.30day")
+
+#Check to ensure that there is a range of freezes 
+TMINData %>% group_by(TMIN.30day) %>% tally()
+
+#Prepare data columns for the merge
+MHD$date<-as.Date(MHD$date)
+MHD <- MHD %>% rename( id = Station)
+MHD$id<-as.factor(MHD$id)
+TMINData$id<-as.factor(TMINData$id)
+
+#Merge 
+TMINData30<-left_join(MHD, TMINData, by=c("date", "id"))
+summary(TMINData30)
+```
 
 *GAM Models* 
 Base Model without Environmental Variables 
@@ -1064,6 +1155,17 @@ AIC(O_gam)
 #14165.96
 plot(O_gam, pages = 1,  trans = plogis,
      shift = coef(O_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+
+TMINData7$Sex<- as.factor(TMINData7$Sex)
+O_gam2 <-mgcv:: gam(Infection ~ s(Year, k= 5) + s(longitude,latitude) + Sex + s(Volunteer,bs="re") , family = binomial, link = logit, data = TMINData7)
+AIC(O_gam2)
+#AIC without Sex as a factor 13685.25, same with it as a factor 
+summary(O_gam2)
+plot(O_gam2, pages = 1,  trans = plogis,
+     shift = coef(O_gam2)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+#Not allowing sex to be grpahed for some reason?!? SIgnificantly better though AIC value - hhh because can't be smoothed
+#Need to change U sex to NA so that only male, female and NA are in column
+
 ```
 
 TMAX Raw GAM
@@ -1080,7 +1182,6 @@ plot(Max_gam, pages = 1,  trans = plogis,
 ```
 
 *TMIN GAM Models* 
-
 TMIN Raw GAM
 ```{r TMIN Raw GAM}
 library(mgcv)
@@ -1110,13 +1211,13 @@ plot(T7_gam, pages = 1,  trans = plogis,
 TMIN Previous 30 Day Average GAM
 ```{r TMIN 30 Day}
 ###################TMIN 30 Day Average##################################
-TMINData7$Volunteer<-as.factor(TMINData7$Volunteer)
-T7_gam <-mgcv:: gam(Infection ~ s(TMIN.7day, k=6) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = TMINData7)
-summary(T7_gam)
-AIC(T7_gam)
-#18864.28
-plot(T7_gam, pages = 1,  trans = plogis,
-     shift = coef(T7_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+TMINData30$Volunteer<-as.factor(TMINData30$Volunteer)
+T30_gam <-mgcv:: gam(Infection ~ s(TMIN.30day, k=6) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = TMINData30)
+summary(T30_gam)
+AIC(T30_gam)
+#12204.9
+plot(T30_gam, pages = 1,  trans = plogis,
+     shift = coef(T30_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 ```
 
 *FREEZE GAM Models* 
@@ -1129,7 +1230,7 @@ MHD_freeze$Volunteer<-as.factor(MHD_freeze$Volunteer)
 F7_gam <-mgcv:: gam(Infection ~ s(freeze.day, k=6) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = MHD_freeze)
 summary(F7_gam)
 AIC(F7_gam)
-#18864.28
+#12523.63
 plot(F7_gam, pages = 1,  trans = plogis,
      shift = coef(F7_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 ```
@@ -1151,19 +1252,18 @@ plot(F30_gam, pages = 1,  trans = plogis,
 ```
 
 *DevZero GAM Models* 
-
 DevZero 7 Day Average GAM
 ```{r}
 
 ###################DevZero 7 Day Average##################################
 library(mgcv)
-DevZeroData30$Volunteer<-as.factor(DevZeroData30$Volunteer)
-Z30_gam <-mgcv:: gam(Infection ~ s(devzero.day, k=6) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = DevZeroData30)
-summary(Z30_gam)
-AIC(Z30_gam)
-#12499.83
-plot(Z30_gam, pages = 1,  trans = plogis,
-     shift = coef(Z30_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+DevZeroData7$Volunteer<-as.factor(DevZeroData7$Volunteer)
+Z7_gam <-mgcv:: gam(Infection ~ s(devzero.day, k=6) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = DevZeroData7)
+summary(Z7_gam)
+AIC(Z7_gam)
+#12527.52
+plot(Z7_gam, pages = 1,  trans = plogis,
+     shift = coef(Z7_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 
 ```
 
@@ -1184,67 +1284,25 @@ plot(Z30_gam, pages = 1,  trans = plogis,
 
 
 
+*Precipitation GAM Models*
+Create the following models: 
+PRCP RAW 
+PRCP 7 Day 
+PRCP 30 Day 
+Interaction between TMIN and PRCP 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Calculate the number of freeze days in 30 day windows. 
-```{r}
-#Calculate the number of freezes 30 days prior to every observation
-library(zoo)
-DFSroll<-rollapply(data = DFS [,c(2:96)],width = 30, 
-                                     FUN = sum, 
-                                     align = "right", 
-                                     fill = NA, 
-                                     by.column = TRUE,
-                                     na.rm = T)
-
-
-#Turn zoo matrix into data frame
-DFSroll<-as.data.frame(DFSroll)
-
-#Add date column back into
-Freeze30 <- cbind(date = DFS$date,DFSroll )
-
-#Turn station ID back into a single column for model analysis   
-#Freeze7<-Freeze7 %>%  gather(id, freeze.day,c(2:ncol(Freeze7))) 
-Freeze30<-Freeze30 %>% pivot_longer(cols=2:ncol(Freeze30),names_to="id",values_to="freeze.day")
-
-#Check to ensure that there is a range of freezes 
-Freeze30 %>% group_by(freeze.day) %>% tally()
-
-#Merge 
-MHD_freeze30<-left_join(MHD, Freeze30, by=c("date", "id"))
-summary(MHD_freeze30)
-
-```
-
-
-```{r}
-
+PRCP Raw GAM
+```{r TMIN Raw GAM}
 library(mgcv)
-MHD_freeze30$Volunteer<-as.factor(MHD_freeze30$Volunteer)
-F30_gam <-mgcv:: gam(Infection ~ s(freeze.day, k=6) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = MHD_freeze30)
-summary(F30_gam)
-AIC(F30_gam)
-#18864.28
-plot(F30_gam, pages = 1,  trans = plogis,
-     shift = coef(F30_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 
-
+###################TMIN RAW###########################################
+PRCP$Volunteer<-as.factor(TMINData7$Volunteer)
+T_gam <-mgcv:: gam(Infection ~ s(TMIN2) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = TMINData7)
+summary(T_gam)
+AIC(T_gam)
+#13429.8
+plot(T_gam, pages = 1,  trans = plogis,
+     shift = coef(T_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 ```
 
 
@@ -1269,52 +1327,20 @@ plot(F30_gam, pages = 1,  trans = plogis,
 
 
 
-```{r}
-#############################################################
-#Create the 30 DAY SUMMED NUMBER OF FREEZES Column#
-#############################################################
-Weather_Hardi_SUMS = Weather_Hardi %>%
-  dplyr::group_by(id, Year) %>%
-  dplyr::arrange(id, Year, Day) %>%
-  dplyr::mutate(freeze.lag1 = lag(freeze.day, n = 1)) %>%
-  dplyr::mutate(freeze.30.previous = zoo::rollapply(data = freeze.lag1, 
-                                     width = 30, 
-                                     FUN = sum, 
-                                     align = "right", 
-                                     fill = NA, 
-                                     na.rm = T))
-
-#Check to ensure that there is a range of freezes 
-Weather_Hardi_SUMS %>% group_by(freeze.30.previous) %>% tally()
-
-
-
-Weather_Hardi<-Weather_Hardi  %>% dplyr::arrange(id,Year,Month,Day)
 
 
 
 
-  
-#############################################################)
-#Create the 60 DAY SUMMED NUMBER OF FREEZES Column#
-#############################################################
-Weather_Hardi_SUMS = Weather_Hardi_SUMS %>%
-  dplyr::group_by(id, Year) %>%
-  dplyr::arrange(id, Year, Day) %>%
-  dplyr::mutate(freeze.lag2 = lag(freeze.day, n = 1)) %>%
-  dplyr::mutate(freeze.60.previous = zoo::rollapply(data = freeze.lag2, 
-                                     width = 60, 
-                                     FUN = sum, 
-                                     align = "right", 
-                                     fill = NA, 
-                                     na.rm = T))
-
-#Check to ensure that there is a range of freezes 
-Weather_Hardi_SUMS %>% group_by(freeze.60.previous) %>% tally()
 
 
 
-```
+
+
+
+
+
+
+
 
 
 
