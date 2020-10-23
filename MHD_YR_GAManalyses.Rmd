@@ -864,8 +864,8 @@ all(unique(MHD$id) %in% unique(Freeze7$id))
 
 *30 Day Freeze Window*
 ```{r 30 Day Freeze Window Calculations}
-#Weather_Hardi <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Freeze.csv")
-Weather_Hardi <- read_csv("./data/Weather_Freeze.csv")
+Weather_Hardi <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Freeze.csv")
+#Weather_Hardi <- read_csv("./data/Weather_Freeze.csv")
 
 DailyFreezeSubset = subset(Weather_Hardi, select = c(id, date, freeze.day) )
 DFS<-DailyFreezeSubset %>% pivot_wider(id_cols=date,names_from = id,values_from=freeze.day) %>% arrange(date)
@@ -1142,6 +1142,128 @@ TMINData30<-left_join(MHD, TMINData, by=c("date", "id"))
 summary(TMINData30)
 ```
 
+
+*PRCP Calculations*
+
+PRCP 7 Day Window Calculations
+```{r TMIN 7 Day Window Calculations}
+library(tidyr)
+TMINSubset = subset(Weather_Hardi, select = c(id, date, TMIN) )
+TMINS<-TMINSubset %>% pivot_wider(id_cols=date,names_from = id,values_from=TMIN) %>% arrange(date)
+
+#Calculate the number of freezes 7 days prior to every observation
+library(zoo)
+TRoll<-rollapply(data = TMINS [,c(2:96)],width = 7, 
+                                     FUN = mean, 
+                                     align = "right", 
+                                     fill = NA, 
+                                     by.column = TRUE,
+                                     na.rm = T)
+
+
+#Turn zoo matrix into data frame
+TRoll<-as.data.frame(TRoll)
+
+#Add date column back into
+TMINData <- cbind(date = TMINS$date,TRoll )
+
+#Turn station ID back into a single column for model analysis   
+TMINData<-TMINData %>% pivot_longer(cols=2:ncol(TMINData),names_to="id",values_to="TMIN.7day")
+
+#Check to ensure that there is a range of freezes 
+TMINData %>% group_by(TMIN.7day) %>% tally()
+
+#Prepare data columns for the merge
+MHD$date<-as.Date(MHD$date)
+MHD <- MHD %>% rename( id = Station)
+MHD$id<-as.factor(MHD$id)
+TMINData$id<-as.factor(TMINData$id)
+
+#Merge 
+TMINData7<-left_join(MHD, TMINData, by=c("date", "id"))
+summary(TMINData7)
+```
+
+
+TMAX 7 Day Window Calculations
+```{r TMIN 7 Day Window Calculations}
+library(tidyr)
+TMAXSubset = subset(Weather_Hardi, select = c(id, date, TMAX) )
+TMAXS<-TMAXSubset %>% pivot_wider(id_cols=date,names_from = id,values_from= TMAX) %>% arrange(date)
+
+#Calculate the number of freezes 7 days prior to every observation
+library(zoo)
+TMRoll<-rollapply(data = TMAXS [,c(2:96)],width = 7, 
+                                     FUN = mean, 
+                                     align = "right", 
+                                     fill = NA, 
+                                     by.column = TRUE,
+                                     na.rm = T)
+
+
+#Turn zoo matrix into data frame
+TMRoll<-as.data.frame(TMRoll)
+
+#Add date column back into
+TMAXData <- cbind(date = TMAXS$date,TMRoll )
+
+#Turn station ID back into a single column for model analysis   
+TMAXData<-TMAXData %>% pivot_longer(cols=2:ncol(TMAXData),names_to="id",values_to="TMAX.7day")
+
+#Check to ensure that there is a range of freezes 
+TMAXData %>% group_by(TMAX.7day) %>% tally()
+
+#Prepare data columns for the merge
+MHD$date<-as.Date(MHD$date)
+MHD <- MHD %>% rename( id = Station)
+MHD$id<-as.factor(MHD$id)
+TMAXData$id<-as.factor(TMAXData$id)
+
+#Merge 
+TMAXData7<-left_join(MHD, TMAXData, by=c("date", "id"))
+summary(TMAXData7)
+```
+
+
+TMAX 30 Day Window Calculations
+```{r TMAX 30 Day Window Calculations}
+library(tidyr)
+TMAXSubset = subset(Weather_Hardi, select = c(id, date, TMAX) )
+TMAXS<-TMAXSubset %>% pivot_wider(id_cols=date,names_from = id,values_from= TMAX) %>% arrange(date)
+
+#Calculate the number of freezes 7 days prior to every observation
+library(zoo)
+TMRoll<-rollapply(data = TMAXS [,c(2:96)],width = 30, 
+                                     FUN = mean, 
+                                     align = "right", 
+                                     fill = NA, 
+                                     by.column = TRUE,
+                                     na.rm = T)
+
+
+#Turn zoo matrix into data frame
+TMRoll<-as.data.frame(TMRoll)
+
+#Add date column back into
+TMAXData <- cbind(date = TMAXS$date,TMRoll )
+
+#Turn station ID back into a single column for model analysis   
+TMAXData<-TMAXData %>% pivot_longer(cols=2:ncol(TMAXData),names_to="id",values_to="TMAX.30day")
+
+#Check to ensure that there is a range of freezes 
+TMAXData %>% group_by(TMAX.30day) %>% tally()
+
+#Prepare data columns for the merge
+MHD$date<-as.Date(MHD$date)
+MHD <- MHD %>% rename( id = Station)
+MHD$id<-as.factor(MHD$id)
+TMAXData$id<-as.factor(TMAXData$id)
+
+#Merge 
+TMAXData30<-left_join(MHD, TMAXData, by=c("date", "id"))
+summary(TMAXData30)
+```
+
 *GAM Models* 
 Base Model without Environmental Variables 
 ```{r Base GAM Model}
@@ -1166,9 +1288,17 @@ plot(O_gam2, pages = 1,  trans = plogis,
 #Not allowing sex to be grpahed for some reason?!? SIgnificantly better though AIC value - hhh because can't be smoothed
 #Need to change U sex to NA so that only male, female and NA are in column
 
+newdat<-aggregate(x=TMINData7$Infection,
+          by=list(TMINData7$Sex,TMINData7$Year),
+          FUN=mean)
+
+p <- ggplot() +geom_point(data = newdat, aes(x=Group.2, y=x, group=Group.1, colour = Group.1)) + stat_summary(fun="mean")
+print(p)
 ```
 
-TMAX Raw GAM
+
+
+*TMAX Raw GAM*
 ```{r TMAX Raw GAM}
 
 ###################TMIN RAW###########################################
@@ -1179,6 +1309,29 @@ AIC(Max_gam)
 #13372.5
 plot(Max_gam, pages = 1,  trans = plogis,
      shift = coef(Max_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+```
+
+TMAX Previous 7 Day Average GAM
+```{r TMAX 7 Day GAM}
+###################TMIN 7 Day Average##################################
+TMAXData7$Volunteer<-as.factor(TMAXData7$Volunteer)
+TM7_gam <-mgcv:: gam(Infection ~ s(TMAX.7day, k=6) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = TMAXData7)
+summary(TM7_gam)
+AIC(TM7_gam)
+#12058.9
+plot(TM7_gam, pages = 1,  trans = plogis,
+     shift = coef(T7_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+```
+
+```{r TMAX 30 Day GAM}
+###################TMIN 7 Day Average##################################
+TMAXData30$Volunteer<-as.factor(TMAXData30$Volunteer)
+TM30_gam <-mgcv:: gam(Infection ~ s(TMAX.30day, k=6) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = TMAXData30)
+summary(TM30_gam)
+AIC(TM30_gam)
+# 12217.76
+plot(TM30_gam, pages = 1,  trans = plogis,
+     shift = coef(T7_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 ```
 
 *TMIN GAM Models* 
@@ -1292,25 +1445,40 @@ PRCP 30 Day
 Interaction between TMIN and PRCP 
 
 PRCP Raw GAM
-```{r TMIN Raw GAM}
+```{r PRCP Raw GAM}
 library(mgcv)
 
 ###################TMIN RAW###########################################
 PRCP$Volunteer<-as.factor(TMINData7$Volunteer)
-T_gam <-mgcv:: gam(Infection ~ s(TMIN2) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = TMINData7)
-summary(T_gam)
-AIC(T_gam)
-#13429.8
-plot(T_gam, pages = 1,  trans = plogis,
-     shift = coef(T_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+P_gam <-mgcv:: gam(Infection ~ s(PRCP) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = TMINData7)
+summary(P_gam)
+AIC(P_gam)
+#12372.3
+plot(P_gam, pages = 1,  trans = plogis,
+     shift = coef(P_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 ```
 
 
 
 
+```{r PRCP X TMIN Raw GAM}
+library(mgcv)
 
+###################TMIN RAW###########################################
+PRCP$Volunteer<-as.factor(TMINData7$Volunteer)
+P_gam <-mgcv:: gam(Infection ~ ti(PRCP, TMIN2) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = TMINData7)
+summary(P_gam)
+AIC(P_gam)
+#12372.3
+plot(P_gam, pages = 1,  trans = plogis,  shift = coef(P_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+    
+vis.gam(P_gam, view=c("PRCP","TMIN2"),plot.type="contour", color = "terrain", contour.col = "black") 
 
+P_gam <-mgcv:: gam(Infection ~ s(PRCP) + s(TMIN2) + ti(PRCP, TMIN2) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = TMINData7)
 
+#12212.04
+
+```
 
 
 
