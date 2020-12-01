@@ -27,13 +27,26 @@ We do not expect the patterns in disease prevalence as described by our predicto
 #wdata <- read.csv("./data/MHD_WD.csv", colClasses = c("Pop_density_CAT" = "factor", "Hardiness2" = "factor", "Infection_Severity" = "factor", "Month"= "factor", "Year"= "factor"))
 
 #The dataset below should be used to examine annual OE data
-data<- read.csv("./data/YR_MHD.csv")
-
+data<- read.csv("./data/YR_MHD_weather_hardi2.csv")
+data<- YR_MHD_weather_hardi2
 summary (data)
 ```
 
 
 *Exploration of the Data through Graphing*
+Checking the distributions of variables to be used for analysis 
+```{r}
+Month <- data$Month
+hist(Month)
+
+latitude <- data$latitude
+hist(latitude)
+
+longitude <- data$longitude
+hist(longitude)
+```
+
+
 Graph the relationship between infection and day of year to visually inspect the relationship for linearity. 
 From this figure it is hard to discern any clear pattern. There seems to be a mostly random distribution of infection prevalence across all year (by day of year). #Note: Day 200 is mid-July 
 ```{r}
@@ -48,7 +61,7 @@ r3<- (r2$mean)
 r2$r3 <- r3
 
 library(ggplot2)
-ggplot(data=r2, aes(x=as.numeric(Day_Year),shape =  Year.Sampled, r3))+geom_point() + geom_smooth()
+ggplot(data=data, aes(x=as.numeric(Day_Year),shape = Year, r3))+geom_point() + geom_smooth()
 ```
 
 Graph the relationship between infection and year to visually inspect the relationship for linearity. 
@@ -678,7 +691,7 @@ The infection data includes an infection score for each observation. The weather
 ```{r EV Models: Import Data}
 ###########################################################################Import the infection data 
 library(readr)
-#MHD<- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/YR_MHD_weather_hardi2.csv")
+MHD<- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/YR_MHD_weather_hardi2.csv")
 MHD <- read_csv("./data/YR_MHD_weather_hardi2.csv")
 
  #Make sure date column is in correct format 
@@ -1090,48 +1103,6 @@ summary(TMINData30)
 
 
 
-*PRCP 7 Day Average Window Calculations*
-```{r PRCP 7 Day Window Calculations}
-library(tidyr)
-library(dplyr)
-PRCPSubset = subset(Weather_Hardi, select = c(id, date, PRCP) )
-PRCPS<-PRCPSubset %>% pivot_wider(id_cols=date,names_from = id,values_from=PRCP) %>% arrange(date)
-
-#Calculate the number of freezes 7 days prior to every observation
-library(zoo)
-TRoll<-rollapply(data = PRCPS [,c(2:96)],width = 7, 
-                                     FUN = mean, 
-                                     align = "right", 
-                                     fill = NA, 
-                                     by.column = TRUE,
-                                     na.rm = T)
-
-
-#Turn zoo matrix into data frame
-TRoll<-as.data.frame(TRoll)
-
-#Add date column back into
-PRCPData <- cbind(date = PRCPS$date,TRoll )
-
-#Turn station ID back into a single column for model analysis   
-PRCPData<-PRCPData %>% pivot_longer(cols=2:ncol(PRCPData),names_to="id",values_to="PRCP.7day")
-
-#Check to ensure that there is a range of freezes 
-PRCPData %>% group_by(PRCP.7day) %>% tally()
-
-#Prepare data columns for the merge
-MHD$date<-as.Date(MHD$date)
-MHD <- MHD %>% rename( id = Station)
-MHD$id<-as.factor(MHD$id)
-PRCPData$id<-as.factor(PRCPData$id)
-PRCPData$date<-as.Date(PRCPData$date)
-
-
-#Merge 
-PRCPData7<-left_join(MHD, PRCPData, by=c("date", "id"))
-summary(TMINData7)
-```
-
 *TMAX 7 Day Window Calculations*
 ```{r TMAX 7 Day Window Calculations}
 library(tidyr)
@@ -1163,7 +1134,6 @@ TMAXData %>% group_by(TMAX.7day) %>% tally()
 
 #Prepare data columns for the merge
 MHD$date<-as.Date(MHD$date)
-MHD <- MHD %>% rename( id = Station)
 MHD$id<-as.factor(MHD$id)
 TMAXData$id<-as.factor(TMAXData$id)
 TMAXData$date<-as.Date(TMAXData$date)
@@ -1215,6 +1185,47 @@ summary(TMAXData30)
 
 
 
+*PRCP 7 Day Average Window Calculations*
+```{r PRCP 7 Day Window Calculations}
+library(tidyr)
+library(dplyr)
+PRCPSubset = subset(Weather_Hardi, select = c(id, date, PRCP) )
+PRCPS<-PRCPSubset %>% pivot_wider(id_cols=date,names_from = id,values_from=PRCP) %>% arrange(date)
+
+#Calculate the number of freezes 7 days prior to every observation
+library(zoo)
+TRoll<-rollapply(data = PRCPS [,c(2:96)],width = 7, 
+                                     FUN = mean, 
+                                     align = "right", 
+                                     fill = NA, 
+                                     by.column = TRUE,
+                                     na.rm = T)
+
+
+#Turn zoo matrix into data frame
+TRoll<-as.data.frame(TRoll)
+
+#Add date column back into
+PRCPData <- cbind(date = PRCPS$date,TRoll )
+
+#Turn station ID back into a single column for model analysis   
+PRCPData<-PRCPData %>% pivot_longer(cols=2:ncol(PRCPData),names_to="id",values_to="PRCP.7day")
+
+#Check to ensure that there is a range of freezes 
+PRCPData %>% group_by(PRCP.7day) %>% tally()
+
+#Prepare data columns for the merge
+MHD$date<-as.Date(MHD$date)
+MHD$id<-as.factor(MHD$id)
+PRCPData$id<-as.factor(PRCPData$id)
+PRCPData$date<-as.Date(PRCPData$date)
+
+
+#Merge 
+PRCPData7<-left_join(MHD, PRCPData, by=c("date", "id"))
+summary(TMINData7)
+```
+
 *PRCP 7 Day Additive Window Calculations*
 ```{r PRCP 7 Day Additive Window Calculations}
 library(tidyr)
@@ -1246,7 +1257,6 @@ PRCPData %>% group_by(PRCP.7day) %>% tally()
 
 #Prepare data columns for the merge
 MHD$date<-as.Date(MHD$date)
-MHD <- MHD %>% rename( id = Station)
 MHD$id<-as.factor(MHD$id)
 PRCPData$id<-as.factor(PRCPData$id)
 PRCPData$date<-as.Date(PRCPData$date)
@@ -1289,14 +1299,13 @@ PRCPData2 %>% group_by(PRCP.30day) %>% tally()
 
 #Prepare data columns for the merge
 MHD$date<-as.Date(MHD$date)
-MHD <- MHD %>% rename( id = Station)
 MHD$id<-as.factor(MHD$id)
 PRCPData2$id<-as.factor(PRCPData2$id)
 PRCPData2$date<-as.Date(PRCPData2$date)
 
 
 #Merge 
-PRCPData30<-left_join(MHD, PRCPData, by=c("date", "id"))
+PRCPData30<-left_join(MHD, PRCPData2, by=c("date", "id"))
 summary(TMINData7)
 ```
 
@@ -1462,7 +1471,8 @@ plot(TM30_gam, pages = 1,  trans = plogis,
 PRCP Raw GAM
 ```{r PRCP Raw GAM}
 library(mgcv)
-
+write.csv(PRCPData7, "PRCPData7.csv")
+save(PRCPData7, file = "PRCPData7.RData")
 ###################PRCP RAW###########################################
 PRCPData7$Volunteer<-as.factor(PRCPData7$Volunteer)
 PRCPData7$PRCP2<-as.numeric(PRCPData7$PRCP2)
@@ -1501,7 +1511,7 @@ plot(P_gam7, pages = 1,  trans = plogis,
 ```
 
 
-PRCP 7 Day Additive model 
+PRCP 7 Day Summed model 
 ```{r PRCP 7 Day GAM}
 library(mgcv)
 
@@ -1530,6 +1540,9 @@ plot(P_gam7, pages = 1,  trans = plogis,shift = coef(P_gam)[1], seWithMean = TRU
 PRCP 30 Day Average Model 
 ```{r PRCP 30 Day Average GAM}
 library(mgcv)
+#For cluster 
+save(PRCPData30, file = "PRCPData30.RData")
+load(file= "P_gam30.RData")
 ##################PRCP 30 Day Average Model ###########################################
 PRCPData30$Volunteer<-as.factor(PRCPData30$Volunteer)
 
@@ -1547,10 +1560,16 @@ Additive Models
 ```{r PRCP + TMAX Raw GAM}
 library(mgcv)
 
+#For cluster
+load(file ="PRCPData7.RData")
+load(file= "TP_gam.RData")
 ###################PRCP + TMAX Raw GAM###########################################
-MHD$Volunteer<-as.factor(MHD$Volunteer)
+PRCPData7$Volunteer<-as.factor(PRCPData7$Volunteer)
+PRCPData7$PRCP2<-as.numeric(PRCPData7$PRCP2)
 
-TP_gam <-mgcv:: gam(Infection ~ s(PRCP) + s(TMAX2) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = MHD)
+
+
+TP_gam <-mgcv:: gam(Infection ~ s(PRCP2) + s(TMAX2) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = PRCPData7)
 summary(TP_gam)
 AIC(TP_gam)
 #
@@ -1561,46 +1580,56 @@ plot(TP_gam, pages = 1,  trans = plogis,  shift = coef(TP_gam)[1], seWithMean = 
 library(mgcv)
 
 #Create dataframe with merged averaged 7 day values of PRCP and TMIN 
-PXT_7day<-left_join(PRCPData7, TMAXData7, by=c("Day", "Year", "id"))
+#Had major problems getting my join to work. Found this Explanation of the code below (that seems to work) online. 
+  #I add a row number within each group of dates, so that only the first June from df_2 will be joined to the first June entry from       df_1.
+PXT_7day<-left_join(PRCPData7 %>% group_by(date) %>% mutate(rowID = row_number()),
+          TMAXData7 %>% group_by(date) %>% mutate(rowID = row_number()), 
+          by = c("date", "rowID"))
+
+#For cluster 
+save(TPa_gam, file = "TPa_gam.RData")
+load(file ="PXT_7day.RData")
+load(file= "TPa_gam.RData")
 
 ###################PRCP + TMIN 7 Day Average GAM###########################################
 PXT_7day$Volunteer.x<-as.factor(PXT_7day$Volunteer.x)
 
-TPa_gam <-mgcv:: gam(Infection.x ~ s(PRCP.7day) + s(TMAX.7day) + s(Year, k= 5) + s(longitude.x,latitude.x) + s(Volunteer.x,bs="re") , family = binomial, link = logit, data = PXT_7day)
+TPa_gam <-mgcv:: gam(Infection.x ~ s(PRCP.7day) + s(TMAX.7day) + s(Year.x, k= 5) + s(longitude.x,latitude.x) + s(Volunteer.x,bs="re") , family = binomial, link = logit, data = PXT_7day)
 summary(TPa_gam)
 AIC(TPa_gam)
-#
+#10836.26
 plot(TPa_gam, pages = 1,  trans = plogis,  shift = coef(TPa_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 ```
+
 Interaction Models 
 ```{r PRCP X MAX Raw GAM}
 library(mgcv)
-
+#Create dataframe with merged averaged 7 day values of PRCP and TMIN 
+  #completed in previous section 
 ###################PRCP X MAX Raw GAM###########################################
-TMAXData7$Volunteer<-as.factor(TMAXData7$Volunteer)
 
-
-TXP_gam <-mgcv:: gam(Infection ~ s(PRCP) + s(TMAX2) + ti(PRCP, TMAX2)+ s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = MHD)
-summary(TP_gam)
-AIC(TP_gam)
+TXPraw_gam <-mgcv:: gam(Infection ~ s(PRCP2) + s(TMAX2) + ti(PRCP, TMAX2)+ s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = PRCPData7)
+summary(TXPraw_gam)
+AIC(TXPraw_gam)
 #
-plot(TP_gam, pages = 1,  trans = plogis,  shift = coef(TP_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+plot(TXPraw_gam, pages = 1,  trans = plogis,  shift = coef(TXPraw_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 
-vis.gam(TP_gam, view=c("PRCP","TMIN2"),plot.type="contour", color = "terrain", contour.col = "black") 
+vis.gam(TXPraw_gam, view=c("TMAX2", "PRCP2"),plot.type="contour", color = "terrain", contour.col = "black") 
 ```
 
 ```{r PRCP X TMAX 7 Day Average GAM}
 library(mgcv)
 
 ###################PRCP X TMAX 7 Day Average GAM###########################################
+PXT_7day$Volunteer.x<-as.factor(PXT_7day$Volunteer.x)
 
-TXPa_gam <-mgcv:: gam(Infection.x ~ s(PRCP.7day) + s(TMAX.7day) + ti(PRCP.7day, TMAX.7day)+ s(Year, k= 5) + s(longitude.x,latitude.x) + s(Volunteer.x,bs="re") , family = binomial, link = logit, data = PXT_7day)
-summary(TPa_gam)
-AIC(TPa_gam)
-#
-plot(TPa_gam, pages = 1,  trans = plogis,  shift = coef(TPa_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+TXPa_gam <-mgcv:: gam(Infection.x ~ s(PRCP.7day) + s(TMAX.7day) + ti(PRCP.7day, TMAX.7day)+ s(Year.x, k= 5) + s(longitude.x,latitude.x) + s(Volunteer.x,bs="re") , family = binomial, link = logit, data = PXT_7day)
+summary(TXPa_gam)
+AIC(TXPa_gam)
+#10813.13
+plot(TXPa_gam, pages = 1,  trans = plogis,  shift = coef(TXPa_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 
-vis.gam(TMAXP_gam, view=c("PRCP","TMAX2"),plot.type="contour", color = "terrain", contour.col = "black") 
+vis.gam(TXPa_gam, view=c("TMAX.7day", "PRCP.7day"),plot.type="contour", color = "terrain", contour.col = "black") 
 
 
 ```
@@ -1611,6 +1640,9 @@ vis.gam(TMAXP_gam, view=c("PRCP","TMAX2"),plot.type="contour", color = "terrain"
 
 #Checking the Data to Gain a Better Understanding of the Observed Patterns#
 
+
+
+
 Graphing Extreme Values 
 ```{r}
 #According to the interaction figure extreme values where an effect is observed are as follows:
@@ -1618,12 +1650,45 @@ Graphing Extreme Values
   #TMAX >30 
   #TMAX <15 
 
-TMAXfiltered<- filter(MHD, TMAX > "30")
+TMAXfiltered<- filter(PXT_7day, TMAX.7day > "30", PRCP.7day > "20")
+TMAXfiltered<- filter(TMAXfiltered,  PRCP.7day < "50")
+TMAXfiltered<- filter(TMAXfiltered,  Infection.x=="1")
+
+
+5283 just TMAX 
+491 plus PRCP 
+
+, Infection.x=="1"
+write.csv(TMAXfiltered, file="ColdWetALL.csv")
 
 TMAXfiltered %>% group_by(Sex) %>% tally()
 TMAXfiltered %>% group_by(State ) %>% tally()
 
+TMAXfiltered<- filter(PXT_7day, TMAX.7day > "30", PRCP.7day > "30", Infection.x=="1")
 
+write.csv(TMAXfiltered, file="HotWet.csv")
+
+#Figure out average infection prevalence by state 
+= 84% in Sept 
+= 66% in Oct 
+
+= 78% in November 
+= 63% in December 
+= 75% in January 
+
+= 90% in May 
+= 88% in June 
+= 81% in July 
+= 89% in August 
+
+
+
+
+
+TMAXfiltered<- filter(PXT_7day, State.x=="FL", Month.x=="10")
+TMAXfiltered<- filter(TMAXfiltered,  PRCP.7day < "50")
+TMAXfiltered<- filter(TMAXfiltered,  Infection.x=="1")
+TMAXfiltered %>% group_by(Infection.x) %>% tally()
 
 ```
 
