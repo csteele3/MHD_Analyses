@@ -12,77 +12,206 @@ GAM Work with Monarch Health Data
 
 
 *Overall Research Objectives*
-1.	Determine how OE infection prevalence changes seasonally (within a year) and across years in the southeastern U.S. 
+1.	TEMPORAL: Determine how OE infection prevalence changes seasonally (within a year) and across years in the southeastern U.S. 
 
-2.	Determine where OE infection prevalence is most prevalent within each year and how the spatial patterns of infection have changed over time? 
+2.	SPATIAL: Determine where OE infection prevalence is most prevalent within each year and how the spatial patterns of infection have changed over time? 
 
-3.	Determine whether climatic variables are correlated with the spatial and temporal changes in OE infection prevalence in the southeastern U.S.
+3.	ENVIRONMENTAL: Determine whether climatic variables are correlated with the spatial and temporal changes in OE infection prevalence in the southeastern U.S.
 
 *Why use a GAM?*
 We do not expect the patterns in disease prevalence as described by our predictor variables to be linear. For example, infection prevalence may experience increases during periods of warm weather such as in late fall and early spring, while mid winter low temperatures may result in a decline in infection prevalence as population density and therefore transmission potential declines. Graphs of the dataset are provided below for visual inspection of the linear or non-linear trends.  
 
 *Dataset*
 ```{r MHD Dataset}
-#The below dataset should be used to examine winter OE data  
-#wdata <- read.csv("./data/MHD_WD.csv", colClasses = c("Pop_density_CAT" = "factor", "Hardiness2" = "factor", "Infection_Severity" = "factor", "Month"= "factor", "Year"= "factor"))
-
-#The dataset below should be used to examine annual OE data
-data<- read.csv("./data/YR_MHD_weather_hardi2.csv")
+#data<- read.csv("./data/YR_MHD_weather_hardi2.csv")
+data<- read.csv("YR_MHD_weather_hardi2.csv")
 data<- YR_MHD_weather_hardi2
 summary (data)
 ```
 
 
 *Exploration of the Data through Graphing*
-Checking the distributions of variables to be used for analysis 
-```{r}
-Month <- data$Month
-hist(Month)
+Checking the distributions of variables to be used for analysis and identifying outliers. 
+```{r Graphical Data Exploration}
+PRCP2 <- data$PRCP2
+PRCP2<-as.numeric(PRCP2)
+hist(PRCP2)
+dotchart(data$PRCP2)
+#Outliers above 100
+
+TMAX2 <- data$TMAX2
+TMAX2<-as.numeric(TMAX2)
+boxplot(TMAX2)
+dotchart(data$TMAX2)
+#Above 40 and below 5 
+
+TMIN2 <- data$TMIN2
+TMIN2<-as.numeric(TMIN2)
+boxplot(TMIN2)
+#Low temp outliers 
 
 latitude <- data$latitude
 hist(latitude)
+#No outliers 
 
 longitude <- data$longitude
 hist(longitude)
+#No outliers
+
+```
+*Identification and Removal of Outliers*
+According to Zuur 2010, outliers may cause overdispersion of the data when using a GLM for analysis. Boxplots are typically used for boxplot exploration. The median is hsows as the horizontal line with the 25% and 75% quartiles forming a box around it. Any point found beyond the whiskers extending from the boxes are outliers. 
+
+Using 95% confidence intervals to identify and remove outliers. 
+
+-Removing outliers produced models that produced a weaker fit to the data and increased variability. FOr now, the outliers will be left in the model. I will also add that even at 99.8% confidence interval, thousands of observations were dropped when trimming out the outliers. 
+
+```{r Removal of Outliers}
+# data$PRCP2<-as.numeric(data$PRCP2)
+# 
+# lower_bound <- quantile(data$PRCP2, 0.01, na.rm = TRUE)
+# lower_bound
+# 
+# upper_bound <- quantile(data$PRCP2, 0.997, na.rm = TRUE)
+# upper_bound
+# 
+# data2<- dplyr::filter(data, PRCP2 < "200")
+# data3<- dplyr::filter(data2, TMAX2 < "5")
+# data4<- dplyr::filter(data3, TMAX2 < "40")
+# 
+# 
+# #According to this method, all observations below 0 and above 47.8 will be considered as potential outliers. The row numbers of the observations outside of the interval can then be extracted with the which() function:
+# 
+# outlier_ind <- which(data$PRCP2 < lower_bound | data$PRCP2 > upper_bound)
+# outlier_ind
+# 
+# data[outlier_ind, "PRCP2"]
+# #148 PRCP2 outliers are identified 
+# 
+# #Code modified from: https://www.statsandr.com/blog/outliers-detection-in-r/#descriptive-statistics
+
 ```
 
 
-Graph the relationship between infection and day of year to visually inspect the relationship for linearity. 
-From this figure it is hard to discern any clear pattern. There seems to be a mostly random distribution of infection prevalence across all year (by day of year). #Note: Day 200 is mid-July 
-```{r}
+*Testing weather variables for correlation* 
+-This plot showed that, as we would expect, there is correlation between TMIN and TMAX. However there is no correlation between the temperature variables and precipitation. 
+```{r Correlation Table}
+# Examine correlations between variables 
+pairs(data[20:24])
+```
+
+*Graph variables of interest against response variable (infection)*
+Graph infection and day of year to visually inspect the relationship for linearity. 
+- The relationship between day of year and infection appears to be non-linear. There seems to be a decrease in infection prevalence in late summer/early fall. #Note: Day 200 is mid-July 
+```{r Graphical Exploration: Day of Year and Infection}
 #Convert variables into different forms for graphing purposes
 data$Day_Year<-as.factor(data$Day_Year)
 data$Infection<-as.numeric(data$Infection)
 
 #Calculate the probability of infection on each day of year 
 library(plyr)
-r2<-ddply(data,.(Day_Year), summarize, mean=mean(Infection))
-r3<- (r2$mean)
-r2$r3 <- r3
+r2<-ddply(data,.(Day_Year), summarize, InfectionMean=mean(Infection))
+r2$InfectionMean <- InfectionMean-1
 
 library(ggplot2)
-ggplot(data=data, aes(x=as.numeric(Day_Year),shape = Year, r3))+geom_point() + geom_smooth()
+ggplot(data=r2, aes(x=as.numeric(Day_Year), InfectionMean))+geom_point() + geom_smooth()
 ```
 
 Graph the relationship between infection and year to visually inspect the relationship for linearity. 
-```{r}
+```{r Graphical Exploration: Year and Infection}
 #Convert variables into different forms for graphing purposes
 ##data$Season<-revalue(data$Season, c("11_12"="1", "12_13"="2", "13_14"="3", "14_15"="4", "15_16"="5", "16_17"="6", "17_18"="7"))
-
-data$Year.Sampled<-as.factor(data$Year.Sampled)
+data$Year<-as.factor(data$Year)
 data$Infection<-as.numeric(data$Infection)
 
 
 #Calculate the probability of infection on each day of year 
 library(plyr)
-s1<-ddply(data,.(Year.Sampled), summarize, mean=mean(Infection))
-s2<- (s1$mean)
-s1$s2 <- s2
+s1<-ddply(data,.(Year), summarize, InfectionMean=mean(Infection-1))
 
 #Plot 
-plot(as.numeric(s1$Year.Sampled), s1$
-       s2, xlab = "Year", ylab = "Probability of Infection", type='o')
+ggplot(data=s1, aes(x=as.numeric(Year), InfectionMean))+geom_point() + geom_smooth()
 ```
+
+Graph the relationship between latitude and year to visually inspect the relationship for linearity. 
+-There is a dramatic effect of latitude. Latitudes between 0-100 have high infection prevalence compared to higher latitudes. 
+
+```{r Graphical Exploration: Latitude and Infection}
+#Convert variables into different forms for graphing purposes
+data$latitude<-as.factor(data$latitude)
+data$Infection<-as.numeric(data$Infection)
+
+#Calculate the probability of infection on each day of year 
+library(plyr)
+r2<-ddply(data,.(latitude), summarize, InfectionMean=mean(Infection-1))
+
+library(ggplot2)
+ggplot(data=r2, aes(x=as.numeric(latitude), InfectionMean))+geom_point() + geom_smooth()
+```
+
+
+Graph the relationship between longitude and infection prevalence to visually inspect the relationship for linearity. 
+-There is no obvious relationship between longitude and infection. 
+
+```{r Graphical Exploration: Longitude and Infection}
+#Convert variables into different forms for graphing purposes
+data$longitude<-as.factor(data$longitude)
+data$Infection<-as.numeric(data$Infection)
+
+#Calculate the probability of infection on each day of year 
+r2<-ddply(data,.(longitude), summarize, InfectionMean=mean(Infection-1))
+
+ggplot(data=r2, aes(x=as.numeric(longitude), InfectionMean))+geom_point() +  scale_x_discrete(labels = c(-80))+ theme(axis.text.x = element_text(angle = 90)) + geom_smooth()
+```
+
+Graph the relationship between precipitation and infection prevalence to visually inspect the relationship for linearity. 
+-There is no obvious relationship between precip and infection prevalence. 
+
+```{r Graphical Exploration: Precip and Infection}
+#Convert variables into different forms for graphing purposes
+data$PRCP2<-as.factor(data$PRCP2)
+data$Infection<-as.numeric(data$Infection)
+
+#Calculate the probability of infection on each day of year 
+library(plyr)
+r2<-ddply(data,.(PRCP2), summarize, InfectionMean=mean(Infection-1))
+
+library(ggplot2)
+ggplot(data=r2, aes(x=as.numeric(PRCP2), InfectionMean))+geom_point() + geom_smooth()
+```
+Graph the relationship between TMAX and infection prevalence to visually inspect the relationship for linearity. 
+-There is a parabolic relationship between TMAX and infection. 
+
+```{r Graphical Exploration: TMAX and Infection}
+#Convert variables into different forms for graphing purposes
+data$TMAX2<-as.factor(data$TMAX2)
+data$Infection<-as.numeric(data$Infection)
+
+#Calculate the probability of infection on each day of year 
+r2<-ddply(data,.(TMAX2), summarize, InfectionMean=mean(Infection-1))
+
+ggplot(data=r2, aes(x=as.numeric(TMAX2), InfectionMean))+geom_point() + geom_smooth()
+```
+
+Graph the relationship between TMIN and infection prevalence to visually inspect the relationship for linearity. 
+-There is a parabolic relationship between TMIN and infection. 
+
+```{r Graphical Exploration: TMIN and Infection}
+#Convert variables into different forms for graphing purposes
+data$TMIN2<-as.factor(data$TMIN2)
+data$Infection<-as.numeric(data$Infection)
+
+#Calculate the probability of infection on each day of year 
+r2<-ddply(data,.(TMIN2), summarize, InfectionMean=mean(Infection-1))
+
+ggplot(data=r2, aes(x=as.numeric(TMIN2), InfectionMean))+geom_point() + geom_smooth()
+```
+
+
+
+
+
+
 
 
 Graph the spatial distribution of the data.  
@@ -95,19 +224,18 @@ states <- map_data("state")
 
 se_map <- subset(states, region %in% c("florida", "georgia", "louisiana", "alabama", "mississippi", "texas", "south carolina", "oklahoma", "arkansas", "north carolina", "tennessee", "virginia", "kentucky", "west virginia", "missouri", "illinois", "kansas"))
 
+
+data$Infection<-as.factor(data$Infection)
 gg<-ggplot() + 
   geom_polygon(data=se_map,aes(x=long,y=lat,group=group), fill="grey", colour = "white")+
-   geom_point(data=data, aes(x=Longitude, y=Latitude, color = factor(Infection)), position = "jitter", size=1)+
-  scale_colour_manual(values = c("1"="chocolate3", "0"= "cyan"))+
- 
- # geom_point(data=data, aes(x=Longitude, y=Latitude),size=1, colour = "black")
-  coord_map(xlim = c(-98.5, -75),ylim = c(24, 37))+
-   xlab("Longitude") + ylab("Latitude")
-
+   geom_point(data=data, aes(x=as.numeric(longitude), y=as.numeric(latitude), colour = factor(Infection)), position = "jitter", size=1)+ scale_colour_manual(values = c("1"="chocolate3", "0"= "cyan"))+
+   coord_map(xlim = c(-98.5, -75),ylim = c(24, 37))+
+   xlab("Longitude") + ylab("Latitude") +
   gg + theme(panel.background = element_rect(fill = "skyblue3",
                                 colour = "skyblue3"),
           panel.grid.major = element_blank(),
           panel.grid.minor = element_blank())
+gg
 ```
 
 
@@ -147,123 +275,103 @@ In order to include Volunteer as a random effect, we tell the model to use the r
 
 8. Should I be using a different basis function? Cubic? 
 
-```{r eval, = FALSE if exists (gam_modIF.Rdata) }
+```{r eval, = FALSE if exists (gam_modTIME.Rdata) }
 require(mgcv)
 
-###Make sure each variable is in the correct format 
+###Make sure each variable is in the correct format
 data$Day_Year<-as.numeric(data$Day_Year)
-data$Year.Sampled<-as.numeric(data$Year.Sampled)
+data$Year<-as.numeric(data$Year)
 data$Infection<-as.factor(data$Infection)
+data$Volunteer<-as.factor(data$Volunteer)
 
-gam_modTIME <- gam(Infection ~  s(Day_Year, bs = "cc") + s(Year.Sampled,  k = 8) + ti(Day_Year, bs = "cc", by = Year.Sampled, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
 
-save(gam_modTIME, file="gam_modII.Rdata")
+gam_modTIME <- gam(Infection ~  s(Day_Year, bs = "cc") + s(Year,  k = 8) + ti(Day_Year, bs = "cc", by = Year, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
+
+save(gam_modTIME, file="gam_modTIME.Rdata")
 
 summary(gam_modTIME)
 
-
-
 ```
 
 
+Key points from model output: 
 
-The following models are the different iterations that eventually led to the final model selected above. They change terms in the model from smooth to linear or investigate the way the interaction term is used. 
-```{r eval, = FALSE if exists (gam_modIF.Rdata) }
-
-# #gam_mod: Model with Year as a linear effect
-# gam_mod <- gam(Infection ~  Year.Sampled + ti(Day_Year, by = Year.Sampled, k =6) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
-# 
-# summary(gam_mod) 
-# save(gam_mod, file="gam_mod.Rdata")
-# 
-# 
-# ###gam_modSS: Fit model with Year smoothed (numeric)
-# 
-# data$Year.Sampled<-as.numeric(data$Year.Sampled)
-# 
-# gam_modSS <- gam(Infection ~  s(Year.Sampled, k = 8) + ti(Day_Year, by = Year.Sampled, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
-# 
-# summary(gam_modSS)
-# save(gam_modSS, file="gam_modSS.Rdata")
-# 
-# 
-# ###Fit model with Day_Year as an added  individual effect with both day_year and year smoothed
-# 
-# #Running Both as numeric variables
-# data$Year.Sampled<-as.numeric(data$Year.Sampled)
-# data$Day_Year<-as.numeric(data$Day_Year)
-# 
-# gam_modIY <- gam(Infection ~  s(Day_Year) + s(Year.Sampled, k = 8) + ti(Day_Year, by = Year.Sampled, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
-# 
-# save(gam_modIY, file="gam_modIY.Rdata")
-# summary(gam_modIY)
-# 
-# 
-# ###Fit model with Day_Year as an added  individual effect with year as a factor
-# data$Year.Sampled<-as.factor(data$Year.Sampled)
-# data$Day_Year<-as.numeric(data$Day_Year)
-# 
-# 
-# gam_modIF <- gam(Infection ~  s(Day_Year) + Year.Sampled + ti(Day_Year, by = Year.Sampled, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
-# 
-# save(gam_modIF, file="gam_modIF.Rdata")
-# summary(gam_modIF)
-# 
-# 
-# #WHen comparing all 4 models:
-# #gam_modIF = 12266.17
-# #gam_modIY = 12813.5. 
-# #gam_mod =   12317.86
-# #gam_modSS = 12859.28
-# AIC(gam_modIY, gam_modIF, gam_mod, gam_modSS)
-# 
-# 
-# #Model without "by" as the interaction term# 
-# gam_modNoby <- gam(Infection ~  s(Day_Year, bs = "cc") + s(Year.Sampled,  k = 8) + ti(Day_Year, bs = "cc", by = Year.Sampled, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
-# 
-# save(gam_modNoby, file="gam_modNoby.Rdata")
-# 
-# AIC(gam_modIY, gam_modIF, gam_mod, gam_modSS, gam_modII)
-
-#Could it be that the AIC value is higher when year is a factor because it is more closely fitting the data, but it is not answering the question we have about Year, which is how does infection change OVER TIME? WIth year as a factor, the question seems to be how does infection change from year to year or within a single year. 
-
-# gam_modIY	264.3734	14116.17		
-# gam_modIF	278.3352	13646.39		
-# gam_mod	267.6086	  12317.86		
-# gam_modSS	242.2135	12859.28		
-# gam_modII	295.0423	13675.55	
-#with te added: gam_modII	292.4565	13674.03	(without "by")
-#with Day_Year as cyclic: 13671.31 (without "by")
-#with Day as cyclic and Year as cubic: 13671.31 (so not needed) (without "by")
-# "by" added back in 14281.25
-#remove "Te"
-
-# #Model with only interaction term for contour plot#
-# gam_modCC <- gam(Infection ~   ti(Day_Year, by = Year.Sampled, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
-
-```
-
-
-*Summarize output of model*
+The model output summary tells us that the additive temporal variables explain 41.6% of the deviance.We also can convert the outputs from the model to actual probabilities because the GAM model uses a log-odds scale for estimating outputs. After converting the intercept estimate below we find that the model predicts a 47.8% chance of infection overall. 
 ```{r}
-summary.gam(gam_modTIME) 
+plogis(-0.08493)
+```
+
+
+*Plot the results of the temporal model* 
+Plots of the partial effects of the interaction fo Day_Year and Year. 
+
+```{r}
+
+#Year.Sampled = c("2011-2012", "2012-2013", "2013-2014", "2014-2015", "2015-2016", "2016-2017", "2017-2018")
+#axis(, at=1:8, xaxp=letters[2011:2018])
+
+#provides partial effects plots for individual terms in the model 
+require(mgcv)
+plot(gam_modTIME, pages = 1,  trans = plogis,
+     shift = coef(gam_modTIME)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+
+#provides contour plot for interaction term in the model 
+vis.gam(gam_modTIME, n.grid = 50, theta = 400, phi = 20, ylab = "Day of Year", xlab = "Year", zlab = "",
+        plot.type =  "contour", color = "terrain", main = "Interaction between day of year and season")
+
+#Using ggplot to control details of contour plot 
+ Time_pred <- expand_grid(
+  Day_Year = seq(from=1, 
+              to=365, length.out = 300),
+  Year = seq(from=min(data$Year), 
+              to=max(data$Year), 
+              length.out = 35), 
+   Volunteer = 1, 
+              length.out = 1)
+  
+
+Time_pred <- predict(gam_modTIME, newdata = Time_pred, 
+                      se.fit = TRUE) %>%  
+  as_tibble() %>% 
+  cbind(Time_pred)
+
+dim(Time_pred)   
+
+#Turn log-odds ration into probability 
+Time_pred$fit<-plogis(Time_pred$fit)
+
+#Determine the min/max of the fit column 
+summary(Time_pred$fit)
+
+#Graph using ggplot 
+cp<-ggplot(Time_pred, aes(x=Day_Year, y=Year)) + 
+  geom_tile(aes(fill = fit)) +
+  geom_contour(aes(z = fit), colour = "white") 
+               
+cp+ scale_fill_distiller(palette = "Spectral", name = "Infection Prevalence", breaks=c(0.2,0.3, 0.4,0.5, 0.6, 0.7), labels=c(0.2,0.3, 0.4,0.5, 0.6, 0.7)) +  xlab("Day of Year") + ylab("Year")
+
+#Code help: https://drmowinckels.io/blog/2019-11-16-plotting-gamm-interactions-with-ggplot2/
+
+```
+
+
+*Checking the Fit of the Model*
+```{r}
+#Checking the results from the summary function 
+
+#The deviance explained is a bit like R2 for models where sums of squares doesn't make much sense as a measure of discrepancy between the observations and the fitted values. In generalised models instead we measure this discrepancy using deviance. It is computed using the likelihood of the model and hence has a somewhat different mathematical definition for each error distribution. From Wood, S. N. (2006). Generalized Additive Models: An Introduction with R. Chapman and Hall/CRC.
+
+summary(gam_modTIME)
+#Deviance explained = 41.6%
 
 #For standard deviations and confidence intervals 
 gam.vcomp(gam_modTIME)
-```
-Key points from model output: 
 
-The model output summary tells us that the additive temporal variables explain 42.5% of the deviance.We also can convert the outputs from the model to actual probabilities because the GAM model uses a log-odds scale for estimating outputs. After converting the intercept estimate below we find that the model predicts a 44.1% chance of infection overall. 
-```{r}
-plogis(-0.2373)
-```
+# Histogram of residuals 
+gam.check(gam_modTIME)
 
 
-*Checking the Model*
-```{r}
-#gam.check(gam_modTIME)
-
-#gam.check does not seem to be the best method for visualizing logistic models
+#gam.check does not seem to be the best method for visualizing logistic models. Here we use a binned plot of the fitted values to evaluate the model fit. The vast majority of the residuals are well predicted by the model. 
 
 library(arm)
 
@@ -279,141 +387,57 @@ binnedplot(fitted(gam_modTIME),
 ```
 
 
-*Plot the results of the temporal model* 
-Plots of the partial effects of the interaction fo Day_Year and Season for each level of Season. 
 
-```{r}
-require(mgcViz)
-require(mgcv)
-
-#Year.Sampled = c("2011-2012", "2012-2013", "2013-2014", "2014-2015", "2015-2016", "2016-2017", "2017-2018")
-#axis(, at=1:8, xaxp=letters[2011:2018])
-
-#Version1
-plot(gam_modII, pages = 1,  trans = plogis,
-     shift = coef(gam_modIY)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
-
-#Version2
-b <- getViz(gam_modII, trans = plogis)
-
-print(plot(b, allTerms = T))
-```
-
-Visualization of the interaction between Year and Day_Year in a 3D plot. 
-```{r}
-
-vis.gam(gam_modII, n.grid = 50, theta = 400, phi = 20, ylab = "Day of Year", xlab = "Year", zlab = "",
-        ticktype = "detailed", color = "terrain", main = "Interaction between day of year and season")
-
-
-
-##theta= rotates the view around horizontally 
-##phi = rotates the view vertically 
-##n.grid =  controls the number of grid boxes
-##z scale = GAM model predictions 
-
-```
-
-Visualization of the interaction between Year and Day_Year in a contour plot.
-```{r}
-require(mgcv)
-
-vis.gam(gam_modTIME, view=c("Day_Year","Year.Sampled"),plot.type="contour", color = "terrain", contour.col = "black") 
-
-#The contour lines represent points of equal predicted values, and they are labeled. The dotted lines show uncertainty in prediction; they represent how contour lines would move if predictions were one standard error higher or lower.
-
-#Run a model without an interaction to help understand the contour plot 
-  #gam_modNI <- gam(Infection ~  s(Day_Year) + s(Year.Sampled, k = 8)  + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
-  #save(gam_modNI, file="gam_modNI.Rdata" )
-  #vis.gam(plog, view=c("Day_Year","Year.Sampled"),plot.type="contour", color = "terrain", contour.col = "yellow") 
-
-
-devtools::install_github('gavinsimpson/gratia')
-library('gratia')
-mod <- gam(y ~ s(x, z, k = 30), data = dat$data, method = "REML")
-
-mod <- gam(Infection ~   ti(Day_Year, bs = "cc", by = Year.Sampled, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
-
-
-draw(gam_modII)
-
-
-
-```
-
-
-Summary of plot results: 
 
 *Spatio-temporal Model Example* 
 
 Joint models of space and time. 
 
-Should an interaction between space and time be included? This is compared here and the interaction is found to be significant and produces a significantly lower AIC value compared to the non-interaction term model. 
+Note: Should an interaction between space and time be included? This was compared (check "MHD Extra Code") and the interaction was found to be significant and produced a significantly lower AIC value compared to the non-interaction term model. 
 ```{r}
-data$Year.Sampled<-as.numeric(data$Year.Sampled)
-
-
-#First, run a model without an interaction between space and time as done in the example. By comparing this model to the model with a space-tie interaction, we will be able to determine the relative importance of the interaction term. 
-
-STno = gam(Infection~ s(Longitude_city,Latitude_city) + s(Year.Sampled, k = 8) + s(Volunteer, bs="re"),
-                          data=data,family=binomial,method="REML")
-
-save(STno, file="STno.Rdata")
-summary(STno)
-plot(STno,scheme=2)
-
+data$Year<-as.numeric(data$Year)
 
 #Now run the model with the interaction term 
 
-STyes = gam(Infection~ s(Longitude,Latitude) + s(Year.Sampled, k = 8)+ ti(Longitude, Latitude, Year.Sampled, d=c(2,1)) + s(Volunteer, bs="re"),
-                          data=data,family=binomial,method="REML")
+STyes = gam(Infection~ s(longitude,latitude) + s(Year, k = 8)+ ti(longitude, latitude, Year, d=c(2,1)) + s(Volunteer, bs="re"), data=data,family=binomial,method="REML")
+
 save(STyes, file="STyes.Rdata")
+
 summary(STyes)
 plot(STyes,scheme=2)
 
 load("STyes.Rdata")
-AIC(STyes)
-
-
 ```
-WHile including the interaction term improves the fit of the model, it doesnt make it easy to determine where we are seeing 1) OE hotspots within each year 2) the greatest change in hotspots over time. 
 
-We will next use the "predict" function from mgcv to better visualize the output of the STyes model. 
-
-
-Graphing of space-time interactions 
-
+*Graphing of space-time interactions* 
+We will next use the "predict" function from mgcv to better visualize the output of the STyes model.
 
 We need to select a volunteer whose observations represent the average infection prevalence found by all volunteers. To do this, we will first determine the average infection prevalence per volunteer and then select the volunteer whose average is closest to this number. 
 ```{r}
 #First use plyr to calculate the average per volunteer 
 library(plyr)
-r2<-ddply(data,.(Volunteer), summarize, Avg=mean(Infection))
+data$Infection<-as.numeric(data$Infection)
+data$Volunteer<-as.factor(data$Volunteer)
+
+r2<-ddply(data,.(Volunteer), summarize, Avg=mean(Infection-1))
 r2
 #We now have a table r2, with the average infection prevalence per volunteer for all 269 volunteers 
 ```
 
-We can visualize the distribution of infection prevalence per volunteer. 
-```{r}
-library(ggplot2)
-ggplot(data=r2, aes(x=as.factor(Volunteer), Avg)) + geom_point()+ geom_smooth()
 
-hist(r2$Avg)
-```
 Next we summarize the r2 dataframe to determine the overall mean per volunteer. 
 ```{r}
 summary(r2)
 
-#The mean in 0.4681
+#The mean in 0.44793
 ```
-Select the volunteers with an average closest to the average of 0.4681
+Select the volunteers with an average closest to the average of 0.44793
 ```{r}
-
 Average_Volunteers <- r2[r2$Avg >= 0.4 & r2$Avg < 0.5, ]
-Average_Volunteers$Differ<-0.4681-Average_Volunteers$Avg
+Average_Volunteers$Differ<-0.44793-Average_Volunteers$Avg
 Average_Volunteers
 
-#We find that 2 volunteers Ana Maria Agrusa (13) and Laninda Sande (154) have averages closest to the overall average (0.4615385), therefore we can use either volunteer in the model 
+#We find that volunteer Dave Leimer (69) has an average closest to the overall average (0.44793), therefore we can use Dave in the model 
 ```
 
 
@@ -432,27 +456,27 @@ se_map <- subset(states, region %in% c("florida", "georgia", "louisiana", "alaba
 
 We can now move on to creating a grid of predicted infection prevalence using the average observation values of volunteer #13.  
 ```{r}
-data$Latitude<-as.numeric(data$Latitude)
-data$Longitude<-as.numeric(data$Longitude)
+data$latitude<-as.numeric(data$latitude)
+data$longitude<-as.numeric(data$longitude)
 
-se_map$Latitude<-as.numeric(se_map$lat)
-se_map$Longitude<-as.numeric(se_map$long)
+se_map$latitude<-as.numeric(se_map$lat)
+se_map$longitude<-as.numeric(se_map$long)
 
-data$Year.Sampled<-as.factor(data$Year.Sampled)
+data$Year<-as.factor(data$Year)
 
 #First we'll create gridded data
 
 predict_infection = expand.grid(
-  Latitude= seq(min(data$Latitude), 
-                max(data$Latitude),
+  latitude= seq(min(data$latitude), 
+                max(data$latitude),
                 length=100),
-  Longitude = seq(min(data$Longitude),
-                  max(data$Longitude),
+  longitude = seq(min(data$longitude),
+                  max(data$longitude),
                   length=100),
-  Volunteer = levels(data$Volunteer)[13],  
-  Year.Sampled = seq(2011,2018,by=1))
+  Volunteer = levels(data$Volunteer)[69],  
+  Year = seq(2011,2018,by=1))
 
-#head(predict_infection)
+head(predict_infection)
 
 #summary(data)
 ```
@@ -471,14 +495,14 @@ library(ggplot2)
 library(viridis)
 library(dplyr)
 
-se_map<-se_map %>% mutate(Longitude=long,Latitude=lat)
+se_map<-se_map %>% mutate(longitude=long,latitude=lat)
 predict_infection_clipped<-data.frame()
 groups<-unique(se_map$group)
 
 for(g in 1:length(groups))
 {
-  temp<-predict_infection[with(predict_infection %>% dplyr::select("Longitude","Latitude"), 
-                               inSide(se_map %>% filter(group==groups[g]) %>% dplyr::select("Longitude","Latitude"),Longitude,Latitude)),]
+  temp<-predict_infection[with(predict_infection %>% dplyr::select("longitude","latitude"), 
+                               inSide(se_map %>% filter(group==groups[g]) %>% dplyr::select("longitude","latitude"),longitude,latitude)),]
   predict_infection_clipped<-rbind(predict_infection_clipped,temp)
   
 }
@@ -500,11 +524,11 @@ plotcities <- subset(world.cities, name %in% c("Atlanta", "Houston", "New Orlean
 
 Graph the data
 ```{r}
-gg<-ggplot(aes(Longitude, Latitude,  fill= model_fit), 
+gg<-ggplot(aes(longitude, latitude,  fill= model_fit), 
        data=predict_infection_clipped)+ #%>% filter(Year.Sampled==2011))+ 
   geom_tile()+
-  facet_wrap(~Year.Sampled,nrow=4)+
-  scale_fill_viridis("Infection Probability")+
+  facet_wrap(~Year,nrow=4)+
+  scale_fill_viridis(option="magma", "Infection Prevalence")+
   geom_polygon(data=se_map,aes(x=long,y=lat,group=group),color="black",inherit.aes = FALSE,alpha=0)+
   
   # geom_point(x = -84.42, y = 33.76, colour="red", size = 1)+
@@ -531,8 +555,7 @@ gg<-ggplot(aes(Longitude, Latitude,  fill= model_fit),
           panel.grid.minor = element_blank())
 g
   
-save_plot("~/g.png", plot_tmp, base_height = NULL, base_aspect_ratio = 1.618, 
-base_width = 6)
+#save_plot("~/g.png", plot_tmp, base_height = NULL, base_aspect_ratio = 1.618, base_width = 6)
 
 #library(OpenImageR)
 
@@ -543,129 +566,96 @@ base_width = 6)
 
 
 Add space by day of year may be the next step in the analysis in order to see if infection changes in different regions through time
-It seems like anytime I seem to know what I ma talking about she rears up 
-We need to have a story with this. Especially from the spatiotemporal data. Think about story for publication 
 
 
-Calculate the difference from year to year 
+Can we examine the relationship between season and location? 
 ```{r}
-predict_infection$model_change =predict(STyes,
-                                      predict_infection%>%mutate(Year.Sampled=Year.Sampled+1),
-                                      type = "response") - predict_infection$model_fit 
+data$Year<-as.numeric(data$Year)
+data$Infection<-as.factor(data$Infection)
+
+#Now run the model with the interaction term 
+
+STdayear = gam(Infection~ s(longitude,latitude) + s(Day_Year)+ ti(longitude, latitude, Day_Year, d=c(2,1)) + s(Volunteer, bs="re"), data=data,family=binomial,method="REML")
+
+save(STdayear, file="STdayear.Rdata")
+
+summary(STdayear)
+plot(STdayear,scheme=2)
+
+load("STdayear.Rdata")
+```
+
+We can now move on to creating a grid of predicted infection prevalence using the average observation values of volunteer #13.  
+```{r}
+data$latitude<-as.numeric(data$latitude)
+data$longitude<-as.numeric(data$longitude)
+
+se_map$latitude<-as.numeric(se_map$lat)
+se_map$longitude<-as.numeric(se_map$long)
 
 
+#First we'll create gridded data
 
-se_map<-se_map %>% mutate(Longitude=long,Latitude=lat)
+predict_infection = expand.grid(
+  latitude= seq(min(data$latitude), 
+                max(data$latitude),
+                length=100),
+  longitude = seq(min(data$longitude),
+                  max(data$longitude),
+                  length=100),
+  Volunteer = levels(data$Volunteer)[69],  
+  Day_Year = seq(min(data$Day_Year),
+                  max(data$Day_Year),
+                  length=365))
 
+head(predict_infection2)
+
+#summary(data)
+```
+
+Create the Model Fit Column 
+```{r}
+
+predict_infection2$model_fit = predict(STdayear,
+                                    predict_infection2,type = "response")
+
+```
+
+Create a for loop to build polygons for each group in the dataset 
+```{r}
+library(ggplot2)
+library(viridis)
+library(dplyr)
+
+se_map<-se_map %>% mutate(longitude=long,latitude=lat)
 predict_infection_clipped<-data.frame()
 groups<-unique(se_map$group)
 
 for(g in 1:length(groups))
 {
-  temp<-predict_infection[with(predict_infection %>% dplyr::select("Longitude","Latitude"), 
-                               inSide(se_map %>% filter(group==groups[g]) %>% dplyr::select("Longitude","Latitude"),Longitude,Latitude)),]
-  predict_infection_clipped<-rbind(predict_infection_clipped,temp)
+  temp<-predict_infection2[with(predict_infection2 %>% dplyr::select("longitude","latitude"), 
+                               inSide(se_map %>% filter(group==groups[g]) %>% dplyr::select("longitude","latitude"),longitude,latitude)),]
+  predict_infection_clipped2<-rbind(predict_infection_clipped2,temp)
   
 }
 ```
 
+Graph the data
 ```{r}
-
-library(RColorBrewer)
-
-summary(predict_infection_clipped)
-#mimimum change = -0.71, max= 0.94
-
-#Labels for each facet 
-
-
-ggplot(aes(Longitude, Latitude, fill= model_change),
-       data=predict_infection_clipped%>% filter(Year.Sampled < 2018))+
+gg<-ggplot(aes(longitude, latitude,  fill= model_fit), 
+       data=predict_infection_clipped2)+ #%>% filter(Year.Sampled==2011))+ 
   geom_tile()+
-  facet_wrap(~ (Year.Sampled = c("2011-2012", "2012-2013", "2013-2014", "2014-2015", "2015-2016", "2016-2017", "2017-2018")),nrow=2)
-  #scale_fill_gradient2("Infection Probability", low = "green", high = "red", na.value = NA, limits = c(-1, 1),    breaks = c(-1, -0.5, 0, 0.5, 1),
-   #labels = c(-1, -0.5, 0, 0.5, 1))
-
-
-
-
-
-gg<-ggplot(aes(Longitude, Latitude,  fill= model_change), 
-       data=predict_infection_clipped %>% filter(Year.Sampled < 2018))+ 
-  geom_tile()+
-  facet_wrap(~Year.Sampled,nrow=4)+
-   scale_fill_gradient2("Rate of change\n(species per year)")+
-  #scale_fill_drsimonj("Infection Probability", palette = "mixed", guide = "none")+
-  geom_polygon(data=se_map,aes(x=long,y=lat,group=group),color="black",inherit.aes = FALSE,alpha=0)+ 
-  theme_bw(10)+
+  #facet_wrap(~Year,nrow=4)+
+  scale_fill_viridis(option="magma", "Infection Prevalence")+
+  geom_polygon(data=se_map,aes(x=long,y=lat,group=group),color="black",inherit.aes = FALSE,alpha=0)+
   coord_map(xlim = c(-98.5, -75),ylim = c(24, 37))
-  
-  geom_point(x = -84.42, y = 33.76, colour="red", size = 2)+
-  annotate(geom = "text", x = -84.42, y = 33.5, label = "Atlanta", 
-    fontface = "bold", color = "white", size = 2)+
-  
-  geom_point(x = -95.39, y = 29.77, colour="red", size = 2)+
-  annotate(geom = "text", x = -95.39, y = 29.5, label = "Houston", 
-    fontface = "bold", color = "white", size = 2)+
 
-  geom_point(x = -89.93, y = 30.07, colour="red", size = 2)+
-  annotate(geom = "text", x = -88.00, y = 30.1, label = "New Orleans", 
-    fontface = "bold", color = "white", size = 2)+
-  
-  geom_point(x = -82.48, y = 27.96, colour="red", size = 2)+
-  annotate(geom = "text", x = -83.7, y = 27.88, label = "Tampa", 
-    fontface = "bold", color = "white", size = 2)+
-
-  
-
-  gg+ theme(panel.background = element_rect(fill = "skyblue3",
+  g<-gg+ theme(panel.background = element_rect(fill = "skyblue3",
                                 colour = "skyblue3"),
           panel.grid.major = element_blank(),
           panel.grid.minor = element_blank())
- gg     
+g
 ```
-
-
-Can we examine the relationship between season and location? 
-
-
-```{r}
-
-
-want <- seq(1, nrow(data), length.out = 200)
-pdat <- with(data,
-              data.frame(Day_Year = Day_Year[want], Year.Sampled = Year.Sampled[want],
-                         Volunteer = Volunteer[want]))
- 
- ## predict trend contributions
-p  <- predict(gam_modII,  newdata = pdat, type = "terms", se.fit = TRUE)
-p1 <- predict(m1$gam, newdata = pdat, type = "terms", se.fit = TRUE)
-p2 <- predict(m2$gam, newdata = pdat, type = "terms", se.fit = TRUE)
-p3 <- predict(m3$gam, newdata = pdat, type = "terms", se.fit = TRUE)
-
-## combine with the predictions data, including fitted and SEs
-pdat <- transform(pdat,
-                   p  = p$fit[,2],  se  = p$se.fit[,2],
-                   p1 = p1$fit[,2], se1 = p1$se.fit[,2],
-                   p2 = p2$fit[,2], se2 = p2$se.fit[,2],
-                   p3 = p3$fit[,2], se3 = p3$se.fit[,2])
-
-
-
-
-op <- par(mar = c(5,4,2,2) + 0.1)
-ylim <- with(pdat, range(p, p1, p2, p3))
-> ylim[1] <- floor(ylim[1])
-> ylim[2] <- ceiling(ylim[2])
-> ylab <- expression(Temperature ~ (degree*C ~ centred))
-
-
-
-plot(Infection - mean(Infection) ~ Day_Year, data = data, type = "n")
-```
-
-
-
 
 
 *Research Question 2*
