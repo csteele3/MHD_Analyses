@@ -380,10 +380,18 @@ binnedplot(fitted(gam_modTIME),
            nclass = NULL, 
            xlab = "Expected Values", 
            ylab = "Average residual", 
-           main = "S Year", 
            cex.pts = 0.8, 
            col.pts = 1, 
            col.int = "gray")
+
+
+acf(gam_modTIME$residuals)
+pacf(TXPfiltered_gam$residuals)
+
+pacf(gam_modTIME$residuals) 
+
+ Box.test(resid(gam_modTIME),type="Ljung",lag=1)
+Box.test(gam_modTIME, lag=10,type = "Ljung-Box")
 ```
 
 
@@ -569,24 +577,42 @@ Add space by day of year may be the next step in the analysis in order to see if
 
 
 Can we examine the relationship between season and location? 
-```{r}
+```{r Building the Spatiotemporal Model: Month}
+library(mgcv)
+#Created a new column "Season" with the months coded into seasons 
+  #Nov, Dec, Jan, Feb = Winter 
+  #March, April, May = Spring 
+  #June, July, August = Summer 
+  #September, October = Fall 
+
+
 data$Year<-as.numeric(data$Year)
 data$Infection<-as.factor(data$Infection)
+data$Volunteer<-as.factor(data$Volunteer)
+data$Season<-as.factor(data$Season)
 
 #Now run the model with the interaction term 
+#STseason = gam(Infection~ s(longitude,latitude) + Season + ti(longitude, latitude, by = Season, d=c(2,1))  + s(Volunteer, bs="re"), data=data,family=binomial,method="REML")
 
-STdayear = gam(Infection~ s(longitude,latitude) + s(Day_Year)+ ti(longitude, latitude, Day_Year, d=c(2,1)) + s(Volunteer, bs="re"), data=data,family=binomial,method="REML")
+STmonth = gam(Infection~ s(longitude,latitude) + s(Month) + ti(longitude, latitude, Month, d=c(2,1))  + s(Volunteer, bs="re"), data=data,family=binomial,method="REML")
 
-save(STdayear, file="STdayear.Rdata")
 
-summary(STdayear)
-plot(STdayear,scheme=2)
 
-load("STdayear.Rdata")
+library(mgcViz)
+b<-getViz(STmonth)
+print(plot(b, allTerms = TRUE), pages = 1)
+
+save(STmonth, file="STdayear.Rdata")
+
+summary(STmonth)
+plot(STmonth)
+load("STmonth.Rdata")
 ```
 
 We can now move on to creating a grid of predicted infection prevalence using the average observation values of volunteer #13.  
-```{r}
+```{r Preparing Data for Graphing of Spatiotemporal Model: Month }
+
+
 data$latitude<-as.numeric(data$latitude)
 data$longitude<-as.numeric(data$longitude)
 
@@ -596,7 +622,7 @@ se_map$longitude<-as.numeric(se_map$long)
 
 #First we'll create gridded data
 
-predict_infection = expand.grid(
+predict_infection2 = expand.grid(
   latitude= seq(min(data$latitude), 
                 max(data$latitude),
                 length=100),
@@ -604,57 +630,67 @@ predict_infection = expand.grid(
                   max(data$longitude),
                   length=100),
   Volunteer = levels(data$Volunteer)[69],  
-  Day_Year = seq(min(data$Day_Year),
-                  max(data$Day_Year),
-                  length=365))
+  Month = seq(min(data$Month),
+                  max(data$Month),
+                  length=12))
 
 head(predict_infection2)
 
-#summary(data)
+summary(predict_infection2$Month)
+predict_infection2$model_fit = predict(STmonth,
+                                    predict_infection2,type = "response")
 ```
 
 Create the Model Fit Column 
-```{r}
+```{r Graphing Spatiotemporal Models: Month}
 
-predict_infection2$model_fit = predict(STdayear,
-                                    predict_infection2,type = "response")
 
-```
-
-Create a for loop to build polygons for each group in the dataset 
-```{r}
-library(ggplot2)
-library(viridis)
-library(dplyr)
-
-se_map<-se_map %>% mutate(longitude=long,latitude=lat)
 predict_infection_clipped<-data.frame()
 groups<-unique(se_map$group)
+
 
 for(g in 1:length(groups))
 {
   temp<-predict_infection2[with(predict_infection2 %>% dplyr::select("longitude","latitude"), 
                                inSide(se_map %>% filter(group==groups[g]) %>% dplyr::select("longitude","latitude"),longitude,latitude)),]
-  predict_infection_clipped2<-rbind(predict_infection_clipped2,temp)
+  predict_infection_clipped<-rbind(predict_infection_clipped,temp)
   
 }
-```
+predict_infection_clipped%>%arrange(Month)
 
-Graph the data
-```{r}
+predict_infection_clipped$Month<-as.character(predict_infection_clipped$Month)
+predict_infection_clipped$Month <- revalue(x = predict_infection_clipped$Month, 
+c("1" = "Jan", "2" = "Feb", "3" = "March", "4" = "April", "5" = "May", "6" = "June", "7" = "July", "8" = "Aug",  "9" = "Sept", "10" = "Oct", "11" = "Nov", "12" = "Dec" ))
+
+
+neworder<- c("Jan", "Feb", "March", "April", "May", "June", "July", "Aug", "Sept", "Oct", "Nov", "Dec")
+library(plyr)  ## or dplyr (transform -> mutate)
+predict_infection_clipped$Month <- arrange(transform(predict_infection_clipped,
+             Month=factor(Month,levels=neworder)),Month)
+
+predict_infection_clipped$Month  <- factor(predict_infection_clipped$Month , levels = c("Jan", "Feb", "March", "April", "May", "June", "July", "Aug", "Sept", "Oct", "Nov", "Dec"))
+
+
+
 gg<-ggplot(aes(longitude, latitude,  fill= model_fit), 
-       data=predict_infection_clipped2)+ #%>% filter(Year.Sampled==2011))+ 
+       data=predict_infection_clipped)+ #%>% filter(Year.Sampled==2011))+ 
   geom_tile()+
-  #facet_wrap(~Year,nrow=4)+
+  facet_wrap(~Month,nrow=4)+
+  
   scale_fill_viridis(option="magma", "Infection Prevalence")+
   geom_polygon(data=se_map,aes(x=long,y=lat,group=group),color="black",inherit.aes = FALSE,alpha=0)+
+
   coord_map(xlim = c(-98.5, -75),ylim = c(24, 37))
 
-  g<-gg+ theme(panel.background = element_rect(fill = "skyblue3",
+  g<-gg+ theme(panel.background = element_rect(fill = 
+                                                 "skyblue3",
                                 colour = "skyblue3"),
           panel.grid.major = element_blank(),
           panel.grid.minor = element_blank())
 g
+
+
+#, labeller = labeller(Month = monthlabs)
 ```
 
 
@@ -1610,6 +1646,31 @@ vis.gam(TXPraw_gam, view=c("TMAX2", "PRCP2"),plot.type="contour", color = "terra
 ```{r PRCP X TMAX 7 Day Average GAM}
 library(mgcv)
 
+###For Cluster Work 
+load("PXT_7day.RData")
+
+  #Trying with filtered values 
+#Filtering High Values#
+library(dplyr)
+#TMAX.7day > "-10",
+something2<- filter(PXT_7day,  PRCP.7day < "60")
+summary(something2)
+#something (50 prcp) total of 11607 samples, 5500 lost 
+#something 2 (60 prcp) 12095 5000 lost
+#something 2 (70 prcp) 12420 4500 lost
+
+
+something$Volunteer.x<-as.factor(something$Volunteer.x)
+
+TXPfiltered_gam2 <-mgcv:: gam(Infection.x ~ s(PRCP.7day) + s(TMAX.7day) + ti(PRCP.7day, TMAX.7day)+ s(Year.x, k= 5) + s(longitude.x,latitude.x) + s(Volunteer.x,bs="re") , family = binomial, link = logit, data = something2)
+
+save(TXPfiltered_gam, file="TXPfiltered_gam.RData")
+
+plot(TXPfiltered_gam2, pages = 1,  trans = plogis,  shift = coef(TXPfiltered_gam2)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+
+library(mgcViz)
+vis.gam(TXPfiltered_gam2, view=c(  "TMAX.7day", "PRCP.7day"),plot.type="contour", color = "terrain", contour.col = "black") 
+
 ###################PRCP X TMAX 7 Day Average GAM###########################################
 PXT_7day$Volunteer.x<-as.factor(PXT_7day$Volunteer.x)
 
@@ -1619,11 +1680,59 @@ AIC(TXPa_gam)
 #10813.13
 plot(TXPa_gam, pages = 1,  trans = plogis,  shift = coef(TXPa_gam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 
-vis.gam(TXPa_gam, view=c("TMAX.7day", "PRCP.7day"),plot.type="contour", color = "terrain", contour.col = "black") 
+b<-getViz(TXPfiltered_gam2)
+print(plot(b, allTerms = TRUE), pages = 1)
 
+library(mgcViz)
+vis.gam(TXPa_gam, view=c("TMAX.7day", "PRCP.7day"),plot.type="contour", color = "terrain", contour.col = "black") 
+plogis(-0.4731)
 
 ```
+Create a Contour Plot for the Interaction Between Temperature and Precipitation 
+```{r}
+library(mgcv)
+library(tidyr)
 
+PXT_7day$Volunteer.x<-as.factor(PXT_7day$Volunteer.x)
+#Using ggplot to control details of contour plot 
+ Time_pred <- expand_grid(
+  TMAX.7day = seq(from=0, 
+              to=50, length.out = 50),
+   PRCP.7day = seq(from=0, 
+              to=300, length.out = 300),
+  Year.x = seq(from=2011, 
+              to=2018, length.out = 8 ),
+    latitude.x = seq(from=min(PXT_7day$latitude.x), 
+              to=max(PXT_7day$latitude.x)),
+  longitude.x = seq(from=min(PXT_7day$longitude.x), 
+              to=max(PXT_7day$longitude.x)),
+   Volunteer.x = 1, length.out = 1)
+ 
+write.csv(Time_pred, "Time.pred.csv")
+ 
+ Tie_pred <- predict(TXPfiltered_gam, newdata = Tie_pred, 
+                      se.fit = TRUE) %>%  
+  as_tibble() %>% 
+  cbind(Tie_pred)
+
+save(Time_pred, file="Time_pred.RData")
+load("Tie_pred.csv")
+ 
+dim(Time_pred)   
+
+#Turn log-odds ratio into probability 
+Time_pred$fit<-plogis(Time_pred$fit)
+
+#Determine the min/max of the fit column 
+summary(Time_pred$fit)
+
+#Graph using ggplot 
+cp<-ggplot(Time_pred, aes(x=Day_Year, y=Year)) + 
+  geom_tile(aes(fill = fit)) +
+  geom_contour(aes(z = fit), colour = "white") 
+               
+cp+ scale_fill_distiller(palette = "Spectral", name = "Infection Prevalence", breaks=c(0.2,0.3, 0.4,0.5, 0.6, 0.7), labels=c(0.2,0.3, 0.4,0.5, 0.6, 0.7)) +  xlab("Day of Year") + ylab("Year")
+```
 
 
 
@@ -1643,7 +1752,7 @@ Graphing Extreme Values
 TMAXfiltered<- filter(PXT_7day, TMAX.7day > "30", PRCP.7day > "20")
 TMAXfiltered<- filter(TMAXfiltered,  PRCP.7day < "50")
 TMAXfiltered<- filter(TMAXfiltered,  Infection.x=="1")
-
+#try filtering PRCP >60 and Temp below 0 
 
 5283 just TMAX 
 491 plus PRCP 
