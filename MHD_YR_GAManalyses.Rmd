@@ -596,13 +596,7 @@ data$Season<-as.factor(data$Season)
 
 STmonth = gam(Infection~ s(longitude,latitude) + s(Month) + ti(longitude, latitude, Month, d=c(2,1))  + s(Volunteer, bs="re"), data=data,family=binomial,method="REML")
 
-
-
-library(mgcViz)
-b<-getViz(STmonth)
-print(plot(b, allTerms = TRUE), pages = 1)
-
-save(STmonth, file="STdayear.Rdata")
+save(STmonth, file="STmonth.Rdata")
 
 summary(STmonth)
 plot(STmonth)
@@ -1045,6 +1039,234 @@ summary(DevZeroData30)
 #check that all  stations in the MHD data frame are paired correctly with the weather stations. should return TRUE
 all(unique(MHD$id) %in% unique(Freeze7$id))
 ```
+
+
+
+
+
+
+
+
+
+
+*30C  Calculations* 
+
+```{r}
+###########################################
+##########30C DATA###############
+###########################################
+#Weather_Hardi <- read_csv("C:/Users/CHS/Desktop/RFiles/MHD/MHD_5RFiles/MHD_AnalysesFiles/data/Weather_Hardi.csv")
+Weather_Hardi <- read_csv("./data/Weather_Hardi.csv")
+
+#Modify the weather data to prepare it for analysis
+  #Rename Columns to match MHD
+library(dplyr)
+Weather_Hardi<-Weather_Hardi %>%
+  rename(Year = Year.Sampled,
+    Station = StationName)
+
+ #Make sure date column is in correct format
+library(lubridate)
+Weather_Hardi$date<- parse_date_time(Weather_Hardi$date, orders = c("mdy", "dmy","ymd"))
+Weather_Hardi$date<-as.Date(Weather_Hardi$date)
+#Create the week variable
+Weather_Hardi$week <- week(Weather_Hardi$date)
+
+#Turn each daily observation into a 0 or 1 for freezes, developmental 0 and then count the number of occurrences in a week.
+#Function for counting the number of freezes. Starting with identifying freeze days.
+ThirtyC.days<-function (TMAX, Day){
+  ThirtyC.days<-c()
+  for (i in 1:length(TMAX)){
+    if(is.na(TMAX[i])){
+      ThirtyC<-NA
+    }else if (TMAX[i]<30){
+      ThirtyC<-0
+    }else{
+      ThirtyC<-1
+    }
+    ThirtyC.days<-c(ThirtyC.days, ThirtyC)
+  }
+  return(ThirtyC.days)
+}
+
+#and now the dev zero day counter
+Weather_Hardi$thirtyc.day<-ThirtyC.days(Weather_Hardi$TMAX, Weather_Hardi$Day)
+
+#Examine the number of dev zero days to ensure a reasonable number have been recorded
+Weather_Hardi %>% group_by(thirtyc.day) %>% tally()
+
+
+#For 30C Day of Observation Analysis 
+ThirtyCData<-left_join(MHD, Weather_Hardi, by=c("date", "id"))
+ThirtyCData %>% group_by(thirtyc.day) %>% tally()
+
+
+```
+
+
+*30C 7 Day Calculations*
+```{r 30C 7 Day Calculations}
+
+##################################
+#Use RollApply to Count DEvZero in 7, 30 day increments#
+##################################
+library(tidyr)
+ThirtyCSubset = subset(Weather_Hardi, select = c(id, date, thirtyc.day) )
+DZS<-ThirtyCSubset %>% pivot_wider(id_cols=date,names_from = id,values_from=thirtyc.day) %>% arrange(date)
+
+#Calculate the number of freezes 7 days prior to every observation
+library(zoo)
+ZRoll<-rollapply(data = DZS [,c(2:96)],width = 7, 
+                                     FUN = sum, 
+                                     align = "right", 
+                                     fill = NA, 
+                                     by.column = TRUE,
+                                     na.rm = T)
+
+
+#Turn zoo matrix into data frame
+ZRoll<-as.data.frame(ZRoll)
+
+#Add date column back into
+ThirtyCData <- cbind(date = DZS$date,ZRoll )
+
+#Turn station ID back into a single column for model analysis   
+ThirtyCData<-ThirtyCData %>%  gather(id, thirtyc.day,c(2:ncol(ThirtyCData))) 
+#ThirtyCData<-ThirtyCData %>% tidyr::pivot_longer(cols=2:ncol(ThirtyCData),names_to="id",values_to="thirtyc.day")
+
+#Check to ensure that there is a range of freezes 
+ThirtyCData %>% group_by(thirtyc.day) %>% tally()
+#
+
+#Prepare data columns for the merge
+MHD<-YR_MHD_weather_hardi2
+
+library(lubridate)
+MHD$date<- parse_date_time(MHD$Date_Sampled, orders = c("mdy", "dmy","ymd"))
+MHD$date<-as.Date(MHD$date) 
+
+
+MHD$id<-as.factor(MHD$id)
+ThirtyCData$id<-as.factor(ThirtyCData$id)
+
+#Merge 
+ThirtyCData_7day<-left_join(MHD, ThirtyCData, by=c("date", "id"))
+ThirtyCData_7day %>% group_by(thirtyc.day) %>% tally()
+
+```
+
+*30C 30 Day Calculations*
+```{r 30C 30 Day Calculations}
+
+##################################
+#Use RollApply to Count DEvZero in 7, 30 day increments#
+##################################
+library(tidyr)
+ThirtyCSubset = subset(Weather_Hardi, select = c(id, date, thirtyc.day) )
+DZS<-ThirtyCSubset %>% pivot_wider(id_cols=date,names_from = id,values_from=thirtyc.day) %>% arrange(date)
+
+#Calculate the number of freezes 7 days prior to every observation
+library(zoo)
+ZRoll<-rollapply(data = DZS [,c(2:96)],width = 30, 
+                                     FUN = sum, 
+                                     align = "right", 
+                                     fill = NA, 
+                                     by.column = TRUE,
+                                     na.rm = T)
+
+
+#Turn zoo matrix into data frame
+ZRoll<-as.data.frame(ZRoll)
+
+#Add date column back into
+ThirtyCData <- cbind(date = DZS$date,ZRoll )
+
+#Turn station ID back into a single column for model analysis   
+ThirtyCData<-ThirtyCData %>%  gather(id, thirtyc.day,c(2:ncol(ThirtyCData))) 
+#ThirtyCData<-ThirtyCData %>% tidyr::pivot_longer(cols=2:ncol(ThirtyCData),names_to="id",values_to="thirtyc.day")
+
+#Check to ensure that there is a range of freezes 
+ThirtyCData %>% group_by(thirtyc.day) %>% tally()
+#
+
+#Prepare data columns for the merge
+MHD<-YR_MHD_weather_hardi2
+
+library(lubridate)
+MHD$date<- parse_date_time(MHD$Date_Sampled, orders = c("mdy", "dmy","ymd"))
+MHD$date<-as.Date(MHD$date) 
+
+
+MHD$id<-as.factor(MHD$id)
+ThirtyCData$id<-as.factor(ThirtyCData$id)
+
+#Merge 
+ThirtyCData_30day<-left_join(MHD, ThirtyCData, by=c("date", "id"))
+ThirtyCData_30day %>% group_by(thirtyc.day) %>% tally()
+
+```
+
+*Dev Zero 30 Day Calculations*
+```{r}
+
+##################################
+#Use RollApply to Count DEvZero in 7, 30 day increments#
+##################################
+DailyDevZeroSubset = subset(Weather_Hardi, select = c(id, date, devzero.day) )
+DZS<-DailyDevZeroSubset %>% pivot_wider(id_cols=date,names_from = id,values_from=devzero.day) %>% arrange(date)
+
+#Calculate the number of freezes 7 days prior to every observation
+library(zoo)
+ZRoll<-rollapply(data = DZS [,c(2:96)],width = 30, 
+                                     FUN = sum, 
+                                     align = "right", 
+                                     fill = NA, 
+                                     by.column = TRUE,
+                                     na.rm = T)
+
+
+#Turn zoo matrix into data frame
+ZRoll<-as.data.frame(ZRoll)
+
+#Add date column back into
+DevZeroData <- cbind(date = DZS$date,ZRoll )
+
+#Turn station ID back into a single column for model analysis   
+#Freeze7<-Freeze7 %>%  gather(id, freeze.day,c(2:ncol(Freeze7))) 
+DevZeroData<-DevZeroData %>% pivot_longer(cols=2:ncol(DevZeroData),names_to="id",values_to="devzero.day")
+
+#Check to ensure that there is a range of freezes 
+DevZeroData %>% group_by(devzero.day) %>% tally()
+#
+
+#Prepare data columns for the merge
+MHD$date<-as.Date(MHD$date)
+MHD <- MHD %>% rename( id = Station)
+MHD$id<-as.factor(MHD$id)
+DevZeroData$id<-as.factor(DevZeroData$id)
+
+levels(DevZeroData$id)
+levels(MHD$id)
+
+#Merge 
+DevZeroData30<-left_join(MHD, DevZeroData, by=c("date", "id"))
+summary(DevZeroData30)
+
+#check that all  stations in the MHD data frame are paired correctly with the weather stations. should return TRUE
+all(unique(MHD$id) %in% unique(Freeze7$id))
+```
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 *TMIN Calculations*
@@ -1493,6 +1715,63 @@ plot(TM30_gam, pages = 1,  trans = plogis,
 ```
 
 
+*30C GAM Models*
+ThirtyCData7
+```{r 30C 7 Day GAM}
+###################TMIN 7 Day Average##################################
+ThirtyCData_7day$Volunteer<-as.factor(ThirtyCData_7day$Volunteer)
+C30_7daygam <-mgcv:: gam(Infection ~ s(thirtyc.day, k=6) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = ThirtyCData_7day)
+summary(C30_7daygam)
+AIC(C30_7daygam)
+# 12495.43
+plot(C30_7daygam, pages = 1,  trans = plogis,
+     shift = coef(C30_7daygam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+
+save(C30_7daygam, file = "C30_7daygam.RData")
+
+```
+
+
+ThirtyC 30 Day GAM
+```{r 30C 30 Day GAM}
+###################TMIN 7 Day Average##################################
+ThirtyCData_30day$Volunteer<-as.factor(ThirtyCData_30day$Volunteer)
+C30_30daygam <-mgcv:: gam(Infection ~ s(thirtyc.day, k=6) + s(Year, k= 5) + s(longitude,latitude) + s(Volunteer,bs="re") , family = binomial, link = logit, data = ThirtyCData_30day)
+summary(C30_7daygam)
+AIC(C30_7daygam)
+# 12495.43
+plot(C30_7daygam, pages = 1,  trans = plogis,
+     shift = coef(C30_7daygam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+
+save(C30_7daygam, file = "C30_30daygam.RData")
+
+```
+
+
+ThirtyC Day of Observation GAM
+```{r 30C 30 Day GAM}
+###################TMIN 7 Day Average##################################
+ThirtyCData$Volunteer<-as.factor(ThirtyCData$Volunteer)
+ThirtyCData$Infection<-as.factor(ThirtyCData$Infection)
+
+
+C30_gam <-mgcv:: gam(Infection ~ thirtyc.day + s(Year.x, k= 5) + s(longitude.x,latitude.x) + s(Volunteer,bs="re") , family = binomial, link = logit, data = ThirtyCData)
+summary(C30_gam)
+AIC(C30_gam)
+# 12495.43
+plot(C30_7daygam, pages = 1,  trans = plogis,
+     shift = coef(C30_7daygam)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+
+save(C30_7daygam, file = "C30_30daygam.RData")
+
+```
+
+
+
+
+
+
+
 *Precipitation GAM Models*
 PRCP Raw GAM
 ```{r PRCP Raw GAM}
@@ -1740,6 +2019,23 @@ cp+ scale_fill_distiller(palette = "Spectral", name = "Infection Prevalence", br
 #Checking the Data to Gain a Better Understanding of the Observed Patterns#
 
 
+```{r}
+#Getting estimates for specific values 
+library(mgcv)
+  newdata<-data.frame(PRCP.7day= c(10, 20, 30), TMAX.7day=(-10:100), Year.x =(2011:2018), Volunteer.x=(1:300), latitude=(-200:200), longitude=(-200:200))
+  
+  data<-YR_MHD_weather_hardi2
+  
+  predict(TXPa_gam,newdata=data(PRCP.7day=xn[1],x1=xn[2],
+        x2=xn[3],x3=xn[4]),se=TRUE) 
+predict.gam(TXPa_gam, newdata, type = "response")
+
+, values = list())
+
+
+newdata <- data.frame(PRCP.7day= c(10, 20, 30))
+ newdata$estimate <-predict(TXPa_gam, newdata)
+```
 
 
 Graphing Extreme Values 
@@ -1749,7 +2045,12 @@ Graphing Extreme Values
   #TMAX >30 
   #TMAX <15 
 
-TMAXfiltered<- filter(PXT_7day, TMAX.7day > "30", PRCP.7day > "20")
+coldwet<- filter(data, TMAX2 < "20", PRCP2 > "5", Infection =="1")
+hotdamp<- filter(data, TMAX2 > "30", PRCP2 > "10")
+
+hotdamp<- filter(hotdamp,  PRCP <"45", Infection =="1")
+
+
 TMAXfiltered<- filter(TMAXfiltered,  PRCP.7day < "50")
 TMAXfiltered<- filter(TMAXfiltered,  Infection.x=="1")
 #try filtering PRCP >60 and Temp below 0 
