@@ -591,15 +591,20 @@ data$Infection<-as.factor(data$Infection)
 data$Volunteer<-as.factor(data$Volunteer)
 data$Season<-as.factor(data$Season)
 
+data$Month<-as.factor(data$Month)
+
+
 #Now run the model with the interaction term 
 #STseason = gam(Infection~ s(longitude,latitude) + Season + ti(longitude, latitude, by = Season, d=c(2,1))  + s(Volunteer, bs="re"), data=data,family=binomial,method="REML")
 
-STmonth = gam(Infection~ s(longitude,latitude) + s(Month) + ti(longitude, latitude, Month, d=c(2,1))  + s(Volunteer, bs="re"), data=data,family=binomial,method="REML")
+STmonthasFactor = gam(Infection~ s(longitude,latitude) + s(Month) + ti(longitude, latitude, Month, d=c(2,1))  + s(Volunteer, bs="re"), data=data,family=binomial,method="REML")
 
 save(STmonth, file="STmonth.Rdata")
 
 summary(STmonth)
-plot(STmonth)
+summary(STmonthasFactor)
+
+plot(STmonthasFactor)
 load("STmonth.Rdata")
 ```
 
@@ -611,6 +616,7 @@ data$latitude<-as.numeric(data$latitude)
 data$longitude<-as.numeric(data$longitude)
 
 se_map$latitude<-as.numeric(se_map$lat)
+
 se_map$longitude<-as.numeric(se_map$long)
 
 
@@ -631,16 +637,15 @@ predict_infection2 = expand.grid(
 head(predict_infection2)
 
 summary(predict_infection2$Month)
-predict_infection2$model_fit = predict(STmonth,
+predict_infection2$model_fit = predict(STmonthasFactor,
                                     predict_infection2,type = "response")
 ```
 
 Create the Model Fit Column 
 ```{r Graphing Spatiotemporal Models: Month}
-
-
 predict_infection_clipped<-data.frame()
 groups<-unique(se_map$group)
+
 
 
 for(g in 1:length(groups))
@@ -650,38 +655,51 @@ for(g in 1:length(groups))
   predict_infection_clipped<-rbind(predict_infection_clipped,temp)
   
 }
+
+#Create a second month column to preserve the numeric form 
+predict_infection_clipped$MonthNames<-predict_infection_clipped$Month
+
+
+##PLOTTING 
+
+#Turn numbers into month names 
 predict_infection_clipped%>%arrange(Month)
 
-predict_infection_clipped$Month<-as.character(predict_infection_clipped$Month)
-predict_infection_clipped$Month <- revalue(x = predict_infection_clipped$Month, 
+predict_infection_clipped$MonthNames<-as.character(predict_infection_clipped$MonthNames)
+
+predict_infection_clipped$MonthNames <- revalue(x = predict_infection_clipped$MonthNames, 
 c("1" = "Jan", "2" = "Feb", "3" = "March", "4" = "April", "5" = "May", "6" = "June", "7" = "July", "8" = "Aug",  "9" = "Sept", "10" = "Oct", "11" = "Nov", "12" = "Dec" ))
 
+predict_infection_clipped$MonthNames<-as.factor(predict_infection_clipped$MonthNames)
 
-neworder<- c("Jan", "Feb", "March", "April", "May", "June", "July", "Aug", "Sept", "Oct", "Nov", "Dec")
-library(plyr)  ## or dplyr (transform -> mutate)
-predict_infection_clipped$Month <- arrange(transform(predict_infection_clipped,
-             Month=factor(Month,levels=neworder)),Month)
+ # Reordering group factor levels
+predict_infection_clipped$MonthNames <- factor(predict_infection_clipped$MonthNames,     
+                         levels = c("Jan", "Feb",  "March", "April",  "May", "June", "July",  "Aug",   "Sept",  "Oct",  "Nov",  "Dec" ))
 
-predict_infection_clipped$Month  <- factor(predict_infection_clipped$Month , levels = c("Jan", "Feb", "March", "April", "May", "June", "July", "Aug", "Sept", "Oct", "Nov", "Dec"))
-
-
+##Plot 
 
 gg<-ggplot(aes(longitude, latitude,  fill= model_fit), 
-       data=predict_infection_clipped)+ #%>% filter(Year.Sampled==2011))+ 
+       data=predict_infection_clipped)+
+
+
+ #%>% filter(Year.Sampled==2011))+ 
   geom_tile()+
-  facet_wrap(~Month,nrow=4)+
+ facet_wrap(~MonthNames)+
+ #facet_wrap(~MonthNames, levels= unique(MonthNames))+
+              
+              #c( "Jan", "Feb",  "March", "April",  "May", "June", "July",  "Aug",   "Sept",  "Oct",  "Nov",  "Dec" )) +
   
-  scale_fill_viridis(option="magma", "Infection Prevalence")+
-  geom_polygon(data=se_map,aes(x=long,y=lat,group=group),color="black",inherit.aes = FALSE,alpha=0)+
+  scale_fill_viridis(option="magma", "Infection Prevalence")
+  #geom_polygon(data=se_map,aes(x=long,y=lat,group=group),color="black",inherit.aes = FALSE,alpha=0)+
 
-  coord_map(xlim = c(-98.5, -75),ylim = c(24, 37))
+  #coord_map(xlim = c(-98.5, -75),ylim = c(24, 37))
 
-  g<-gg+ theme(panel.background = element_rect(fill = 
-                                                 "skyblue3",
-                                colour = "skyblue3"),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank())
-g
+ #g<-gg+ theme(panel.background = element_rect(fill = 
+        #                                         "skyblue3",
+         #                       colour = "skyblue3"),
+        #  panel.grid.major = element_blank(),
+        #  panel.grid.minor = element_blank())
+gg
 
 
 #, labeller = labeller(Month = monthlabs)
@@ -2093,39 +2111,109 @@ TMAXfiltered %>% group_by(Infection.x) %>% tally()
 ```
 
 
-Graph the spatial distribution of the data.  
 ```{r}
-library("maps")
-library("dplyr")
-library("ggplot2")
+#GAMM for individual states 
+FLdata<- filter(data, State=="FL")
 
-states <- map_data("state")
 
-se_map <- subset(states, region %in% c("florida", "georgia", "louisiana", "alabama", "mississippi", "texas", "south carolina", "oklahoma", "arkansas", "north carolina", "tennessee", "virginia", "kentucky", "west virginia", "missouri", "illinois", "kansas"))
+gam_modFL <- gam(Infection ~  s(Day_Year, bs = "cc")  + s(Volunteer, bs="re"), family = binomial, method = "REML", data = FLdata)
 
-gg<-ggplot() + 
-  geom_polygon(data=se_map,aes(x=long,y=lat,group=group), fill="grey", colour = "white")+
-   geom_point(data=data, aes(x=Longitude, y=Latitude, color = factor(Infection)), position = "jitter", size=1)+
-  scale_colour_manual(values = c("1"="chocolate3", "0"= "cyan"))+
- 
- # geom_point(data=data, aes(x=Longitude, y=Latitude),size=1, colour = "black")
-  coord_map(xlim = c(-98.5, -75),ylim = c(24, 37))+
-   xlab("Longitude") + ylab("Latitude")
+summary(gam_modFL)
+plot()
+plot(gam_modFL, pages = 1,  trans = plogis,
+     shift = coef(gam_modFL)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
 
-  gg + theme(panel.background = element_rect(fill = "skyblue3",
-                                colour = "skyblue3"),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank())
+```
+
+
+```{r}
+#GAMM for individual states 
+LAdata<- filter(data, State=="LA")
+
+
+gam_modLA <- gam(Infection ~  s(Day_Year, bs = "cc")  + s(Volunteer, bs="re"), family = binomial, method = "REML", data = LAdata)
+
+summary(gam_modLA)
+plot(gam_modLA, pages = 1,  trans = plogis) 
+, seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+
+
+```
+
+```{r}
+#GAMM for individual states 
+TXdata<- filter(data, State=="TX")
+
+
+gam_modTX <- gam(Infection ~  s(Day_Year, bs = "cc")  + s(Volunteer, bs="re"), family = binomial, method = "REML", data = TXdata)
+
+summary(gam_modTX)
+plot(gam_modTX, pages = 1,  trans = plogis,
+     shift = coef(gam_modTX)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+
+```
+
+
+```{r}
+#GAMM for individual states 
+GAdata<- filter(data, State=="GA")
+
+
+gam_modGA <- gam(Infection ~  s(Day_Year, bs = "cc")  + s(Volunteer, bs="re"), family = binomial, method = "REML", data = GAdata)
+
+summary(gam_modGA)
+plot(gam_modGA, pages = 1,  trans = plogis)
+     shift = coef(gam_modGA)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+
+```
+
+
+```{r}
+#GAMM for individual states 
+NCdata<- filter(data, State=="NC")
+
+
+gam_modNC <- gam(Infection ~  s(Day_Year, bs = "cc")  + s(Volunteer, bs="re"), family = binomial, method = "REML", data = NCdata)
+
+summary(gam_modNC)
+plot(gam_modNC)
+
+```
+
+
+```{r}
+#GAMM for regions: Coastal TX and LA 
+Coastaldata<- filter(data, latitude< "32", longitude >= "-88")
+
+
+gam_modCoastaldata <- gam(Infection ~  s(Day_Year, bs = "cc")  + s(Volunteer, bs="re"), family = binomial, method = "REML", data = Coastaldata)
+
+summary(gam_modCoastaldata)
+plot(gam_modCoastaldata)
+plot(gam_modCoastaldata, pages = 1,  trans = plogis)
+     shift = coef(gam_modCoastaldata)[1], seWithMean = TRUE, rug = FALSE, shade = TRUE, shade.col = "lightgrey")
+
+
 ```
 
 
 
 
 
+```{r}
+#GAMM for regions: South Florida  
+SFldata<- filter(data, latitude< "28", longitude <= "-82")
 
 
+gam_modSFldata <- gam(Infection ~  s(Day_Year, bs = "cc")  + s(Volunteer, bs="re"), family = binomial, method = "REML", data = SFldata)
+
+summary(gam_modSFldata)
+plot(gam_modSFldata)
+
+plot(gam_modSFldata, pages = 1,  trans = plogis)
 
 
+```
 
 
 
