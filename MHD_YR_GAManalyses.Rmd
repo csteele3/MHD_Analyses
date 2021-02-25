@@ -285,7 +285,7 @@ data$Infection<-as.factor(data$Infection)
 data$Volunteer<-as.factor(data$Volunteer)
 
 
-gam_modTIME <- gam(Infection ~  s(Day_Year, bs = "cc") + s(Year,  k = 8) + ti(Day_Year, bs = "cc", by = Year, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
+gam_modTIME <- gam(Infection.Status ~  s(Day_Year, bs = "cc") + s(Year,  k = 8) + ti(Day_Year, bs = "cc", by = Year, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
 
 save(gam_modTIME, file="gam_modTIME.Rdata")
 
@@ -2202,10 +2202,26 @@ plot(gam_modCoastaldata, pages = 1,  trans = plogis)
 
 ```{r}
 #GAMM for regions: South Florida  
+library(dplyr)
+library(mgcv)
+
+
+data$Volunteer<-as.factor(data$Volunteer)
+
 SFldata<- filter(data, latitude< "28", longitude <= "-82")
 
 
 gam_modSFldata <- gam(Infection ~  s(Day_Year, bs = "cc")  + s(Volunteer, bs="re"), family = binomial, method = "REML", data = SFldata)
+
+gam_modSFldata <- gam(Infection ~  s(Year, k=8)  + s(Day_Year, bs = "cc") + ti(Day_Year, bs = "cc", by = Year, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = SFldata)
+
+
+
+
+
+gam_modTIME <- gam(Infection.Status ~  s(Day_Year, bs = "cc") + s(Year,  k = 8) + ti(Day_Year, bs = "cc", by = Year, k= 8) + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
+
+
 
 summary(gam_modSFldata)
 plot(gam_modSFldata)
@@ -2217,6 +2233,312 @@ plot(gam_modSFldata, pages = 1,  trans = plogis)
 
 
 
+Hardiness Zone Analysis 
+```{r}
+#GAMM for all hardiness zones 
+library(mgcv)
+library(plyr)
+data$zone2<-as.factor(data$zone)
+data$Volunteer<-as.factor(data$Volunteer)
+
+data$zone2<- revalue(x = data$zone2, 
+c("5a"= "5", "6a"= "6" , "6b"= "6" , "7b"="7", "7a"= "7", "8a"="8", "8b" ="8" ,  "9a"= "9" ,"9b" ="9",  "10a"= "10", "10b" ="10", "11a" = "11" ))
+
+
+data$zone2<-as.numeric(factor(data$zone2, levels = c("5", "6", "7", "8", "9", "10", "11"))) 
+
+
+gam_modHardi <- gam(Infection ~  s(zone2, k=4) + s(Year, k=8)  + + s(Day_Year, bs = "cc")+ s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
+
+summary(gam_modHardi)
+plot(gam_modHardi, trans=plogis)
+
+
+library(lme4) 
+modehardi<-glmer(Infection~ zone2+ Year + (1|Volunteer), data=data,  family = binomial(link="logit"))
+```
+
+
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(viridis)
+
+data$zone<-as.factor(data$zone)
+
+
+  ggplot( data=data, aes(x=zone2, y=Infection)) +
+   stat_boxplot(geom ='errorbar', width = 0.6) +
+     geom_boxplot() +
+  stat_summary(fun.y=mean, geom="point", shape=20, size=14, color="red", fill="red")+
+    xlab("")
+  
+  
+  
+  
+  my_sum <- data %>%
+  group_by(zone2) %>%
+  summarise( 
+    n=n(),
+    mean=mean(Infection),
+    sd=sd(Infection)
+  ) %>%
+  mutate( se=sd/sqrt(n))  %>%
+  mutate( ic=se * qt((1-0.05)/2 + .5, n-1))
+  
+  
+  ggplot(my_sum) +
+  geom_bar( aes(x=zone2, y=mean), stat="identity", fill="forestgreen", alpha=0.5) +
+  geom_errorbar( aes(x=zone2, ymin=mean-sd, ymax=mean+sd), width=0.4, colour="orange", alpha=0.9, size=1.5) +
+  ggtitle("using standard deviation")
+  
+  
+means <- aggregate(Infection~zone2,
+                      data = data,
+                      FUN = mean)
+
+se <- aggregate(Infection~zone2,
+                      data = data,
+                      FUN = se)  
+
+#Merge standard error and means into one column 
+means["stderror"] <- sd$Infection  
+
+ rownames(sd) <- paste("sd", means$standard)
+ 
+ sd$stderror <- sd$Infection 
+ sd$stderror <- sd$Infection/sqrt(n())
+ 
+  means$zone2<-as.factor(means$zone2)
+  
+  ggplot(means) +
+    geom_bar( aes(x=zone2, y=Infection), stat="identity", fill="skyblue", alpha=0.7) +
+    scale_x_discrete(breaks=1:7, labels=c("5" , "6" ,"7", "8", "9", "10", "11" ))+
+   geom_errorbar(aes(x=zone2, ymin=Infection-stderror, ymax=Infection+stderror), width=0.4, colour="orange", alpha=0.9, size=1.3)
+```
+
+
+Linear Test of Time and Infection Prevalence to support GAM observation of increasing prevalence over time 
+```{r}
+data$Year<-as.factor(data$Year)
+library(lme4) 
+lmodTime<-glmer(Infection~  Year + (1|Volunteer), data=data,  family = binomial(link="logit"), glmerControl(optimizer ="bobyqa", optCtrl=list(maxfun=2e5)))
+
+
+```
+```{r}
+Time_plot <- ggplot() + 
+  #2
+geom_point(data=subset(data), aes(Year, Infection)  
+  #3
+  #geom_point(data=data, aes(x=c.urchinden, y=fit), color="blue") +
+  #4
+  #geom_line(data=x_urch, aes(x=c.urchinden, y=fit), color="blue") +
+  #5
+  #geom_ribbon(data= x_urch, aes(x=c.urchinden, ymin=lower, ymax=upper), alpha= 0.3, fill="blue") +
+  #6
+  #labs(x="Urchins (centered & scaled)", y="Coral Cover")
+
+```
+
+
+Regional Analysis 
+```{r}
+
+library(tidyr)
+
+#Using ggplot to control details of contour plot 
+ Time_pred <- expand_grid(
+  Day_Year = seq(from=1, 
+              to=365, length.out = 300),
+  Year = seq(from=min(data$Year), 
+              to=max(data$Year), 
+              length.out = 8), 
+   Volunteer = 1, 
+              length.out = 1)
+  
+library(dplyr)
+Time_pred <- predict(gam_modSFldata, newdata = Time_pred, se.fit = TRUE) %>%  
+  as_tibble() %>% 
+  cbind(Time_pred)
+
+
+as_tibble(Time_pred)
+  
+cbind(Time_pred)
+
+dim(Time_pred)   
+
+#Time_pred<-as.data.frame(Time_pred)   
+
+```
+
+```{r}
+#Time_pred <- predict(gam_modTIME, newdata = Time_pred)
+                      
+
+#dim(Time_pred)   
+
+#Turn log-odds ration into probability 
+Time_pred$fit<-plogis(Time_pred$fit)
+
+
+#Determine the min/max of the fit column 
+summary(Time_pred$fit)
+
+#Graph using ggplot 
+Time_pred$Year<-as.factor(Time_pred$Year)
+
+ggplot(Time_pred)+ aes(x=Day_Year, y=fit) +  
+    #geom_smooth(data = Time_pred, method = "gam", formula = y ~ s(x, bs = "cc"))  +
+    geom_point() + 
+    facet_wrap(~Year)
+
+cp+ scale_fill_distiller(palette = "Spectral", name = "Infection Prevalence", breaks=c(0.2,0.3, 0.4,0.5, 0.6, 0.7), labels=c(0.2,0.3, 0.4,0.5, 0.6, 0.7)) +  xlab("Day of Year") + ylab("Year")
+
+
+ggplot(data)+ aes(x=Day_Year, y=Infection) +  
+    geom_smooth(data = data, method = "gam", formula = y ~ s(x, bs = "cc"))  +
+    #geom_point() + 
+    facet_wrap(~Year)
+
+
+
+```
+
+
+
+Creating Regions Based on Latitude/Longitude Hotspots from Spatial Work and Hardiness Zones
+
+Zone 10: Very far south Florida 
+```{r}
+#Filter out south Florida hardiness zone (zone 10) 
+data$zone<-as.factor(data$zone)
+library(tidyverse)
+#& would be and (so filter one and then filter other) and the bar is both at the same time "or"
+Zone10data<- filter(data, zone == "10a" | zone == "10b")
+
+
+ggplot(Zone10data)+ aes(x=Day_Year, y=(Infection)) +  
+    geom_smooth(data = Zone10data, method = "gam", formula = plogis(y) ~ s(x, bs = "cc"))  +
+    #geom_point() + 
+    facet_wrap(~Year)
+```
+
+
+
+Zone 9: Florida 
+```{r}
+#Filter out south Florida hardiness zone (zone 9) 
+Zone9FL<-filter(data, zone == "9a" | zone == "9b") 
+Zone9FL<-filter(Zone9FL, State == "FL")
+
+ggplot(Zone9FL)+ aes(x=Day_Year, y=plogis(Infection)) +  
+    geom_smooth(data = Zone9FL, method = "gam", formula = (y) ~ s(x, bs = "cc"))  +
+    #geom_point() + 
+    facet_wrap(~Year)
+```
+
+
+
+Zone 9:Coastal TX and Louisiana 
+```{r}
+#Filter out south Florida hardiness zone (zone 10) 
+Zone9GC<-filter(data, zone == "9a" | zone == "9b") 
+Zone9GC<-filter(Zone9GC, State == "LA" | State == "TX")
+
+ggplot(Zone9GC)+ aes(x=Day_Year, y=plogis(Infection)) +  
+    geom_smooth(data = Zone9GC, method = "gam", formula = y ~ s(x, bs = "cc"))  +
+    #geom_point() + 
+    facet_wrap(~Year)
+```
+
+
+Zone 8: North Carolina, South Carolina and Georgia 
+```{r}
+#Filter out south Florida hardiness zone (zone 10) 
+Zone8East<-filter(data, zone == "8a" | zone == "8b") 
+Zone8East<-filter(Zone8East, State == "NC" | State == "SC"| State == "GA")
+
+
+ggplot(Zone8East)+ aes(x=Day_Year, y=plogis(Infection)) +  
+    geom_smooth(data = Zone8East, method = "gam", formula = plogis(y) ~ s(x, bs = "cc"))  +
+    geom_point() + 
+    facet_wrap(~Year)
+```
+
+Zone 8: Mississippi, Alabama, Louisiana, Texas 
+
+```{r}
+Zone8CenterWest<-filter(data, zone == "8a" | zone == "8b") 
+Zone8CenterWest<-filter(Zone8CenterWest, State == "MS" | State == "AL"| State == "LA"| State == "TX")
+
+
+ggplot(Zone8CenterWest)+ aes(x=Day_Year, y=plogis(Infection))+  
+    geom_smooth(data = Zone8CenterWest, method = "gam", formula = plogis(y) ~ s(x, bs = "cc"))  +
+    geom_point() + 
+    facet_wrap(~Year)
+```
+Zone 8: ALL
+```{r}
+Zone8ALL<-filter(data, zone == "8a" | zone == "8b") 
+Zone8CenterWest<-filter(Zone8CenterWest, State == "MS" | State == "AL"| State == "LA"| State == "TX")
+
+
+ggplot(Zone8ALL)+ aes(x=Day_Year, y=plogis(Infection))+  
+    geom_smooth(data = Zone8ALL, method = "gam", formula = plogis(y) ~ s(x, bs = "cc"))  +
+    geom_point() + 
+    facet_wrap(~Year)
+```
+
+
+
+
+
+Does south Florida have higher overall prevalence? 
+```{r}
+```{r}
+#First, filter data to July data only to obtain the infection prevalence during the peak month of July 
+data$Month<-as.factor(data$Month)
+
+library(dplyr)
+JulyData<- filter(data, Month == "7")
+AprilData<- filter(data, Month == "4")
+Zone9FL
+
+#Now use plyr to calculate the average infection prevalence per city and year in July  
+library(plyr)
+JulyData$Infection<-as.numeric(JulyData$Infection)
+
+FLAvgData<-ddply(Zone9FL,.(Year), summarize, Avg=mean(Infection))
+GCAvgData<-ddply(Zone9GC,.(Year), summarize, Avg=mean(Infection))
+All8AvgData<-ddply(Zone8ALL,.(Year), summarize, Avg=mean(Infection))
+Fl10AvgData<-ddply(Zone10data,.(Year), summarize, Avg=mean(Infection))
+
+
+
+AprilData$Infection<-as.numeric(AprilData$Infection)
+
+AprilAvgData<-ddply(AprilData,.(Year, City, State), summarize, Avg=mean(Infection-1))
+AprilAvgData
+
+#Merge JulyAvgData and the table with the date of leaving Mexico ("SpringMigrationYear")
+
+JulyAvgMigration<-left_join(JulyAvgData, SpringMigrationYear, by=c("Year"))
+
+AprilAvgMigration<-left_join(AprilAvgData, SpringMigrationYear, by=c("Year"))
+
+
+
+library(ggplot2)
+ggplot(data=JulyAvgMigration, aes(x=as.numeric(DayYear), Avg))+geom_point() + geom_smooth()
+
+ggplot(data=AprilAvgMigration, aes(x=as.numeric(DayYear), Avg))+geom_point() + geom_smooth()
+
+
+```
+```
 
 
 
@@ -2225,10 +2547,108 @@ plot(gam_modSFldata, pages = 1,  trans = plogis)
 
 
 
+Correlations between Infection and Spring Migration 
+
+```{r}
+#First, filter data to July data only to obtain the infection prevalence during the peak month of July 
+data$Month<-as.factor(data$Month)
+
+library(dplyr)
+JulyData<- filter(data, Month == "7")
+AprilData<- filter(data, Month == "4")
+
+
+#Now use plyr to calculate the average infection prevalence per city and year in July  
+library(plyr)
+JulyData$Infection<-as.numeric(JulyData$Infection)
+
+JulyAvgData<-ddply(JulyData,.(Year, City, State), summarize, Avg=mean(Infection-1))
+JulyAvgData
+
+
+
+AprilData$Infection<-as.numeric(AprilData$Infection)
+
+AprilAvgData<-ddply(AprilData,.(Year, City, State), summarize, Avg=mean(Infection-1))
+AprilAvgData
+
+#Merge JulyAvgData and the table with the date of leaving Mexico ("SpringMigrationYear")
+
+JulyAvgMigration<-left_join(JulyAvgData, SpringMigrationYear, by=c("Year"))
+
+AprilAvgMigration<-left_join(AprilAvgData, SpringMigrationYear, by=c("Year"))
+
+
+
+library(ggplot2)
+ggplot(data=JulyAvgMigration, aes(x=as.numeric(DayYear), Avg))+geom_point() + geom_smooth()
+
+ggplot(data=AprilAvgMigration, aes(x=as.numeric(DayYear), Avg))+geom_point() + geom_smooth()
+
+
+```
 
 
 
 
+
+Look at hot spots 
+```{r}
+TXMigration<- filter(JulyAvgMigration, State == "FL")
+
+ggplot(data=TXMigration, aes(x=as.numeric(DayYear), Avg))+geom_point() + geom_smooth()
+
+
+FlMigration<- filter(AprilAvgMigration, State == "FL")
+
+ggplot(data=FlMigration, aes(x=as.numeric(DayYear), Avg))+geom_point() + geom_smooth()
+
+```
+
+
+
+Model to investigate 
+```{r}
+lm_migration <- lm(Avg ~ Year ,  data = AprilAvgData)
+summary(lm_migration)
+
+require(pscl)
+lm_migration <- zeroinfl(Avg ~ Year ,  data = AprilAvgData)
+
+zeroinfl
+```
+
+
+
+Explore Hardiness Zone as a Variable 
+```{r}
+#GAMM for regions: South Florida  
+data$zone2<-as.factor(data$zone)
+
+
+data$Volunteer<-as.factor(data$Volunteer)
+
+summary(data$zone2)
+
+library(plyr)
+
+data$zone2<- revalue(x = data$zone2, 
+c("5a"= "5", "6a"= "6" , "6b"= "6" , "7b"="7", "7a"= "7", "8a"="8", "8b" ="8" ,  "9a"= "9" ,"9b" ="9",  "10a"= "10", "10b" ="10", "11a" = "11" ))
+
+data$zone2<-as.numeric(factor(data$zone2, levels = c("5", "6", "7", "8", "9", "10", "11"))) 
+
+summary(data$zone2)
+
+library(mgcv)
+gam_modZONE <- gam(Infection ~ s(zone2, k=6) +s(Day_Year, bs = "cc")  + s(Volunteer, bs="re"), family = binomial, method = "REML", data = data)
+
+
+
+summary(gam_modZONE)
+plot(gam_modZONE)
+
+plot(gam_modZONE, pages = 1,  trans = plogis)
+```
 
 
 
