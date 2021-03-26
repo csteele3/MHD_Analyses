@@ -1,0 +1,458 @@
+---
+title: "Freeze Hypothesis T Test"
+author: "Christen"
+date: "March 18, 2021"
+output: html_document
+---
+*Dataset*
+```{r MHD Dataset}
+#data<- read.csv("./data/YR_MHD_weather_hardi2.csv")
+data<- read.csv("YR_MHD_weather_hardi2.csv")
+data<- YR_MHD_weather_hardi2
+summary (data)
+```
+
+
+
+Before and AFter Freeze Calculations Followed by T Test
+```{r}
+
+library(zoo)
+library(tidyr)
+library(dplyr)
+
+
+###First, determine which days freezes ccur in the entire weather dataset. The pair the freezes with the infection observations Wait, do I want to pair with infection data? Perhaps I should just focus this on specific cities? #
+
+#Let's start small with Houston
+TXFreezeData<- filter(Weather_Hardi, State == "TX")
+
+unique(TXFreezeData$City)
+
+
+#Function for counting the number of freezes. Starting with identifying freeze days.
+freeze.days<-function (TMIN, Day){
+  freeze.days<-c()
+  for (i in 1:length(TMIN)){
+    if(is.na(TMIN[i])){
+      freezes<-NA
+    }else if (TMIN[i]>0){
+      freezes<-0
+    }else{
+      freezes<-1
+    }
+    freeze.days<-c(freeze.days, freezes)
+  }
+  return(freeze.days)
+}
+
+#and now the freeze day counter
+TXFreezeData$freeze.day<-freeze.days(TXFreezeData$TMIN, TXFreezeData$Day)
+
+#check to ensure a reasonable distribution of 0s and 1s 
+TXFreezeData %>% group_by(freeze.day) %>% tally()
+
+#filter the data so that only dates with a freeze ocurring remain 
+TXFreezeData<- filter(TXFreezeData, freeze.day == "1")
+  #Only 1944 freeze days 
+```
+
+```{r}
+#Now use zoo to roll through the data, starting with each date from the TXfreezedata and calculating a 30 day infection prevalence average before and after the freeze inside of the MHD (data) . 
+
+#Perhaps I can roll through and calculate 30 day averages and then pair the averages based on id, month and year 
+
+```
+
+
+30 Days Prior Freeze 
+```{r}
+#Create a dataframe with every day of year from 2011 to 2018 
+
+everyday <- data.frame(date = seq(as.Date("2011-01-01"), as.Date("2018-12-31"), by = "day"))
+
+#Filter TX data out of infection observations 
+TXInfectionData<- filter(data, State == "TX")
+
+#Prepare data column for merge 
+library(lubridate)
+TXInfectionData$date<-as.Date(with(TXInfectionData, paste(Year, Month, Day,sep="-")), "%Y-%m-%d")
+   
+#Merge Infection and everyday data frame, keeping all dates and adding NAs to empty infection measurements 
+#Merge 
+EveryInfection<-left_join(everyday, TXInfectionData, by=c("date"))
+summary(EveryInfection)
+#This results in 7797 observations, which should be correct for there being at least one observation every day 
+
+```
+
+
+```{r}
+#Prepare to roll through the TXInfection data determining average infection prevalence every 30 days 
+
+library(tidyr)
+library(zoo)
+
+#Replace NAs with TX in State column
+EveryInfection$State[is.na(EveryInfection$State)] <- "TX"
+
+#Average Infection Prevalence on days when there is more than 1 observation 
+TxINSubset = subset(EveryInfection, select = c(State, date, Infection) )
+TxINSubset<-TxINSubset %>% pivot_wider(id_cols=date,names_from = State,values_from=Infection, values_fn = list(Infection = mean)) %>% arrange(date)
+
+
+
+#Calculate the number of freezes 30 days prior to every observation
+TxINSubset$Rolling<-rollapply(data = TxINSubset [,c(2:2)],width = 30, 
+                                     FUN = function(x) mean(x, na.rm=TRUE), 
+                                     align = "left",
+                                     partial = TRUE,
+                                     fill = NA, 
+                                     by.column = TRUE)
+
+
+
+#Check to ensure that there is a range of freezes 
+TxINSubset %>% group_by(Rolling) %>% tally()
+
+hist(TxINSubset$Rolling)
+
+#Prepare data columns for the merge
+INavgData$date<-as.Date(INavgData$date)
+INavgData$City<-as.factor(INavgData$id)
+INavgData$id<-as.factor(INavgData$id)
+
+#Merge 
+TXFreezeData<- TXFreezeData %>% arrange(date)
+BEFOREAverage<-left_join(TXFreezeData, INavgData, by=c("date", "City"))
+summary(TMINData7)
+
+
+
+TXSumFreeze<- TXFreezeData %>% group_by(date) %>% summarize(n=sum(freeze.day))
+
+```
+
+
+
+
+```{r}
+#Merge the averaged infection prevalence with the TexasFreeze dataframe 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Now that the sample observations are paired with the number of freezes, we want to select the subset of the data that includes freezes only. 
+```{r}
+#Filter out sites int he daily freeze subset that DO have freezes occur 
+FreezeData<- filter(MHD_freeze, freeze.day > "0")
+#Only 978 data points with freezes. 
+
+library(plyr)
+#Get average infection prevalence by city, day, year  
+FreezeDates<-ddply(FreezeData,.(date, City, Day_Year, Year), summarize, InfectionMean=mean(Infection))
+
+#This REsults in 390 freeze dates 
+summary(FreezeDates)
+  #Interesting to note that all freezes occur in January 
+
+```
+
+TXFreezeData$date<-as.Date(with(TXFreezeData, paste(Year.Sampled, Month, Day,sep="-")), "%Y-%m-%d")
+   df$date
+TXFreezeData$id<-as.factor(TXFreezeData$id)
+TXInfectionData$id<-as.factor(TXInfectionData$id)
+
+Could compare sites with freeze to sites without a freeze? 
+
+For each city in Freeze dataset) , I want to get the average infection prevalence before the freeze occurred. 
+
+FOr each city find the date-7 to date -10 (in Freeze Dataset),
+
+ANd record the value in a table 
+
+Perhaps I use roll apply to calculate the average infection prevalence for 7 days before a freeze and seven days after and then just join that to my freeze table? 
+
+Before Freeze Infection Prevalence  
+```{r}
+
+library(tidyr)
+INSubset = subset(MHD, select = c(City, date, Infection) )
+INs<-INSubset %>% pivot_wider(id_cols=date,names_from = City,values_from=Infection, values_fn = list(Infection = mean)) %>% arrange(date)
+
+
+#Calculate the number of freezes 7 days prior to every observation
+library(zoo)
+Rolling<-rollapply(data = INs [,c(2:88)],width = 7, 
+                                     FUN = mean, 
+                                     align = "right", 
+                                     fill = NA, 
+                                     by.column = TRUE)
+
+
+
+#Turn zoo matrix into data frame
+Rolling<-as.data.frame(Rolling)
+
+#Add date column back into
+INavgData <- cbind(date = INs$date,Rolling )
+
+#Turn station ID back into a single column for model analysis   
+INavgData<-INavgData %>% pivot_longer(cols=2:ncol(INavgData),names_to="id",values_to="Avg7Infection")
+
+#Check to ensure that there is a range of freezes 
+INavgData %>% group_by(Avg7Infection) %>% tally()
+
+#Prepare data columns for the merge
+INavgData$date<-as.Date(INavgData$date)
+INavgData$City<-as.factor(INavgData$id)
+INavgData$id<-as.factor(INavgData$id)
+
+#Merge 
+BEFOREAverage<-left_join(FreezeDates, INavgData, by=c("date", "City"))
+summary(TMINData7)
+
+
+
+
+
+```
+
+
+After Freeze Infection Prevalence 
+```{r}
+Before Freeze Infection Prevalence  
+```{r}
+
+library(tidyr)
+INSubset = subset(MHD, select = c(City, date, Infection) )
+INs<-INSubset %>% pivot_wider(id_cols=date,names_from = City,values_from=Infection, values_fn = list(Infection = mean)) %>% arrange(date)
+
+
+#Calculate the number of freezes 7 days prior to every observation
+library(zoo)
+Rolling2<-rollapply(data = INs [,c(2:88)],width = 7, 
+                                     FUN = mean, 
+                                     align = "left", 
+                                     fill = NA, 
+                                      partial = TRUE, 
+                                     by.column = TRUE)
+
+ds=c(1,2,3,4,5,6,7,8,9)
+roll<-rollapply (data =ds, width = 2, FUN = sum, align = "left", partial = TRUE)
+roll2<-as.data.frame(roll)
+
+
+#Turn zoo matrix into data frame
+Rolling2<-as.data.frame(Rolling2)
+
+#Add date column back into
+INavgData2 <- cbind(date = INs$date,Rolling2 )
+
+#Turn station ID back into a single column for model analysis   
+INavgData2<-INavgData2%>% pivot_longer(cols=2:ncol(INavgData2),names_to="id",values_to="Avg7Infection")
+
+#Check to ensure that there is a range of freezes 
+INavgData %>% group_by(Avg7Infection) %>% tally()
+
+#Prepare data columns for the merge
+INavgData$date<-as.Date(INavgData$date)
+INavgData$City<-as.factor(INavgData$id)
+INavgData$id<-as.factor(INavgData$id)
+
+#Merge 
+BEFOREAverage<-left_join(FreezeDates, INavgData, by=c("date", "City"))
+summary(TMINData7)
+
+```
+
+
+
+
+
+
+
+#Prepare data columns for the merge
+library(lubridate)
+
+MHD$date<- parse_date_time(MHD$Date_Sampled, orders = c("mdy", "dmy","ymd"))
+MHD$date<-as.Date(MHD$date)
+
+Freeze7$date<- parse_date_time(Freeze7$date, orders = c("mdy", "dmy","ymd"))
+Freeze7$date<-as.Date(Freeze7$date)
+
+MHD$id<-as.factor(MHD$id)
+Freeze7$id<-as.factor(Freeze7$id)
+
+levels(Freeze7$id)
+levels(MHD$id)
+
+#Merge 
+MHD_freeze<-left_join(MHD, Freeze7, by=c("date", "id"))
+summary(MHD_freeze)
+
+#check that all  stations in the MHD data frame are paired correctly with the weather stations. should return TRUE
+all(unique(MHD$id) %in% unique(Freeze7$id))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ #Create a data frame with only the id of the weather station, the date and the freeze code 
+DailyFreezeSubset = subset(TXFreezeData, select = c(id, date, freeze.day) )
+
+  #Split the "id" column into 95 separate columns (one for each station
+DFS<-DailyFreezeSubset %>% pivot_wider(id_cols=date,names_from = id,values_from=freeze.day) %>% arrange(date)
+
+DFS %>% group_by(USC00083163) %>% tally()
+#Each station should have over 2500 observations (note: this station is in Fort Lauderdale and should have no freezes)
+
+
+
+
+
+
+#Calculate the average infection prevalence (in MHD) 7 days prior to a freeze date (in FreezeDates)
+DateX<-FreezeDates$date
+data2 <- data.frame(FreezeDates$date)
+data2$MHDMean_na <- lapply(DateX, 
+               function(m) mean(MHD$Infection, by = MHD$City [FreezeDates$date >= m - 7 & FreezeDates$date <= m]))
+
+#Perhaps set up list of dates by CIty then roll through to get average. Set start date as from DateX
+INSubset = subset(MHD, select = c(City, date, Infection) )
+INs<-INSubset %>% pivot_wider(id_cols=date,names_from = City,values_from=Infection, values_fn = list(Infection = mean)) %>% arrange(date)
+
+
+mutate(Avg = rollapply(Infection, 7, mean, fill= NA, align = "right")) %>%
+  mutate(Average = lag(Avg)) %>%    
+  
+  
+  
+  
+  
+  A <- Conc$Date
+DateX<-FreezeDates$date
+
+for(i in 1:length(DateX))
+{p <- which(MHD$date>DateX[i] & MHD$date<DateX[i+1])
+M<-mean(MHD$Infection[p])
+print(M)}
+
+
+
+library(data.table)
+DateX<- data.frame(DateX)
+Conc <- setDT(DateX)[, `:=`(start = Date, end = c(Date[2:(.N - 1)] - 1, Date[.N], NA))][-.N]
+Flow <- setDT(Flow)[, `:=`(start = date, end = date)]
+
+library(lubridate)
+#Add a column with the before and after dates to create the time frame for calculating infection averages 
+FreezeDates$BeforeDate<-FreezeDates$date - days(7)
+
+
+
+MHD$average_inf <- sapply(interval((MHD$date -days(7)), MHD$date), function(i)
+                               mean(MHD$Infection, by = City [MHD$date %within% i]))
+
+
+
+
+
+
+  # #
+library(slider)
+MHD %>%  filter(!is.na(date))%>%mutate(avg = slide_index_dbl(Infection, date, mean, .before=1, .after = 5)) %>% select(start_date = date, avg) %>% right_join(MHD ) %>% select(date, Infection, everything()) %>% arrange(date) 
+
+```
+
+
+```{r}
+for (i in 1:length(date.list)){
+  
+  print(paste0(date.list[i], ":", is.numeric(date.list[i])))
+}
+```
+
+
+df1$meansalinity <- mapply(function(a, b)
+  mean(df2$Sal[df2$StationCode == b][match(a, df2$DateFormatted[df2$StationCode == b])]), ranges, names(ranges))
+
+
+DFS<-DFS %>% pivot_longer(cols=2:ncol(Freeze7),names_to="id",values_to="freeze.day")
+
+
+
+```
+
+#Create a dataframe of just days with freezes 
+
+
+
+
+
+
+
+
+
